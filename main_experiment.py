@@ -157,7 +157,7 @@ def main(
     else:
         test_predictions = model.predict(X_test, y_test)
 
-    train_predictions = model.predict(X_train, y_test)
+    train_predictions = model.predict(X_train, y_train)
 
     inference_time = time.time() - start_time - train_time
 
