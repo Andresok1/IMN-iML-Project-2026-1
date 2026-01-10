@@ -1,16 +1,18 @@
-# [NeurIPS 2024] Interpretable Mesomorphic Networks for Tabular Data
+#(iML-Project )Interpretable Mesomorphic Networks for Tabular Data
 
-Even though neural networks have been long deployed in applications involving tabular data, still existing neural architectures are not explainable by design. In this paper, we propose a new class of interpretable neural networks for tabular data that are both deep and linear at the same time (i.e. mesomorphic). We optimize deep hypernetworks to generate explainable linear models on a per-instance basis. As a result, our models retain the accuracy of black-box deep networks while offering  free lunch explainability for tabular data by design. Through extensive experiments, we demonstrate that our explainable deep networks have comparable performance to state-of-the-art classifiers on tabular data and outperform current existing methods that are explainable by design.
+Mesomorphic networks use Deep Neural Networks to construct a local linear intrinsic model for every instance. This approach allows for a highly interpretable predictions while retaining the strong predictive performance of neural networks. Interpretability is achieved both at the model level and the instance level. In this case, interpretability is not applied as a post-hoc method, but rather integrated directly into the prediction process. This combination allows to use the great performance of Neural Networks and at the same time provides interpretable results of linear models. The advantages of both approaches are preserved.
 
-Authors: Arlind Kadra, Sebastian Pineda Arango, and Josif Grabocka
+Through extensive experiments was demostrated that...
+
+This work is based on the original repository developed by [Arlind Kadra, Sebastian Pineda Arango, and Josif Grabocka]. The codebase has been adapted and extended as part of an academic project focused on interpretable machine learning.
+
 
 ## Setting up the virtual environment
 
 ```
-# The following commands assume the user is in the cloned directory
-conda create -n imn python=3.9
+conda create -n imn python=3.10
 conda activate imn
-cat requirements.txt | xargs -n 1 -L 1 pip install
+pip install -r requirements.txt
 ```
 
 ## Running the code
