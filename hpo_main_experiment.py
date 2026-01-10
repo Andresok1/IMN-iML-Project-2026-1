@@ -6,14 +6,14 @@ import numpy as np
 import optuna
 import pandas as pd
 
-from main_experiment import main
-from search_spaces import hpo_space_imn, hpo_space_tabresnet
-from utils import get_dataset
+from main_experiment import main    #entrena y valua el modelo?
+from search_spaces import hpo_space_imn, hpo_space_tabresnet        #espacio de busqueda de hiperparametros?
+from utils import get_dataset    #carga y preprocesa los datos (dataset)
 
 
 def objective(
     trial: optuna.trial.Trial,
-    args: argparse.Namespace,
+    args: argparse.Namespace,   #que Space de hyperparametros usar
     X_train: np.ndarray,
     y_train: np.ndarray,
     X_valid: np.ndarray,
@@ -41,9 +41,9 @@ def objective(
     """
 
     if args.interpretable:
-        hp_config = hpo_space_imn(trial)
+        hp_config = hpo_space_imn(trial)    #modelo interpretable
     else:
-        hp_config = hpo_space_tabresnet(trial)
+        hp_config = hpo_space_tabresnet(trial)  #modelo no interpretable
 
     output_info = main(
         args,

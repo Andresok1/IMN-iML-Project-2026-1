@@ -544,7 +544,7 @@ def get_dataset(
         info_dict: A dictionary with the preprocessed data and additional information
     """
     # Get the data
-    dataset = openml.datasets.get_dataset(dataset_id, download_data=False)
+    dataset = openml.datasets.get_dataset(dataset_id, download_data=False)              #TODO
     dataset_name = dataset.name
     X, y, categorical_indicator, attribute_names = dataset.get_data(
         dataset_format='dataframe',
