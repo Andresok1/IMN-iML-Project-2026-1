@@ -2,7 +2,6 @@ absl-py==1.4.0
 appdirs==1.4.4
 cachetools==5.3.1
 catboost==1.2
-# category_encoders ==2.6.4 #se necesita??
 certifi==2023.5.7
 charset-normalizer==3.1.0
 click==8.1.3
