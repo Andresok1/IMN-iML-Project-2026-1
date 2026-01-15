@@ -6,14 +6,14 @@ import numpy as np
 import optuna
 import pandas as pd
 
-from main_experiment import main    #entrena y valua el modelo?
-from search_spaces import hpo_space_imn, hpo_space_tabresnet        #espacio de busqueda de hiperparametros?
-from utils import get_dataset    #carga y preprocesa los datos (dataset)
+from main_experiment import main
+from search_spaces import hpo_space_imn, hpo_space_tabresnet
+from utils import get_dataset, get_dataset_from_csv
 
 
 def objective(
     trial: optuna.trial.Trial,
-    args: argparse.Namespace,   #que Space de hyperparametros usar
+    args: argparse.Namespace,
     X_train: np.ndarray,
     y_train: np.ndarray,
     X_valid: np.ndarray,
@@ -41,9 +41,9 @@ def objective(
     """
 
     if args.interpretable:
-        hp_config = hpo_space_imn(trial)    #modelo interpretable
+        hp_config = hpo_space_imn(trial)
     else:
-        hp_config = hpo_space_tabresnet(trial)  #modelo no interpretable
+        hp_config = hpo_space_tabresnet(trial)
 
     output_info = main(
         args,
@@ -59,18 +59,30 @@ def objective(
 
     return output_info['test_auroc']
 
+BATCH_SIZE = 16 # Standard war 64
+# ValueError: '16' not in (32, 64, 128, 256, 512)
 
 def hpo_main(args):
     """The main function for hyperparameter optimization."""
 
-    info = get_dataset(
-        args.dataset_id,
-        test_split_size=args.test_split_size,
-        seed=args.seed,
-        encode_categorical=True,
-        hpo_tuning=args.hpo_tuning,
-
-    )
+    # Angepasst fürs einlesen von einer lokalen CSV
+    if args.dataset_path is not None:
+        info = get_dataset_from_csv(
+            csv_path=args.dataset_path,
+            target_column=args.target_column,
+            test_split_size=args.test_split_size,
+            seed=args.seed,
+            encode_categorical=True,
+            hpo_tuning=args.hpo_tuning,
+        )
+    else:
+        info = get_dataset(
+            args.dataset_id,
+            test_split_size=args.test_split_size,
+            seed=args.seed,
+            encode_categorical=True,
+            hpo_tuning=args.hpo_tuning,
+        )
 
     dataset_name = info['dataset_name']
     attribute_names = info['attribute_names']
@@ -110,7 +122,7 @@ def hpo_main(args):
             study.enqueue_trial(
                 {
                     'nr_epochs': 500,
-                    'batch_size': 64,
+                    'batch_size': BATCH_SIZE,
                     'learning_rate': 0.01,
                     'weight_decay': 0.01,
                     'weight_norm': 0.1,
@@ -121,7 +133,7 @@ def hpo_main(args):
             study.enqueue_trial(
                 {
                     'nr_epochs': 500,
-                    'batch_size': 64,
+                    'batch_size': BATCH_SIZE,
                     'learning_rate': 0.01,
                     'weight_decay': 0.01,
                     'dropout_rate': 0.25,
@@ -262,6 +274,22 @@ if __name__ == "__main__":
         '--disable_wandb',
         action='store_true',
         help='Whether to disable wandb logging',
+    )
+
+    # Neues Argument --dataset_path für lokale CSV
+    parser.add_argument(
+        '--dataset_path',
+        type=str,
+        default=None,
+        help='Path to a local CSV dataset',
+    )
+
+    # Neues Argument --dataset_path für lokale CSV
+    parser.add_argument(
+        '--target_column',
+        type=str,
+        default=None,
+        help='Target column name for CSV datasets',
     )
 
     args = parser.parse_args()

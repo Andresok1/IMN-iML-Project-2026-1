@@ -1,3 +1,4 @@
+import os
 from typing import Dict, List, Tuple
 
 import numpy as np
@@ -562,6 +563,55 @@ def get_dataset(
         hpo_tuning=hpo_tuning,
     )
     info_dict['dataset_name'] = dataset_name
+
+    return info_dict
+
+# Neue Hilfsfunktion zum Einlesen einer lokalen CSV
+def get_dataset_from_csv(
+    csv_path: str,
+    target_column: str,
+    test_split_size: float = 0.2,
+    seed: int = 11,
+    encode_categorical: bool = True,
+    encoding_type: str = 'ordinal',
+    hpo_tuning: bool = False,
+) -> Dict:
+    """Load and preprocess a dataset from a local CSV file."""
+
+    df = pd.read_csv(csv_path)
+
+    # Zielvariable
+    y = df[target_column]
+    y = y.str.strip() if y.dtype == 'object' else y
+
+    # Feature-Matrix
+    X = df.drop(columns=[target_column]).copy()
+    if 'customerID' in X.columns:
+        X = X.drop(columns=['customerID'])
+
+    categorical_indicator = X.dtypes == 'object'
+    attribute_names = X.columns.to_numpy()
+
+    # Features in 'category' konvertieren
+    for col, is_cat in zip(X.columns, categorical_indicator):
+        if is_cat:
+            X[col] = X[col].astype('category')
+
+    # Wie get_data Funktion, Preprocessing
+    info_dict = preprocess_dataset(
+        X,
+        y,
+        encode_categorical,
+        categorical_indicator.to_numpy(),
+        attribute_names,
+        test_split_size=test_split_size,
+        seed=seed,
+        encoding_type=encoding_type,
+        hpo_tuning=hpo_tuning,
+    )
+
+    info_dict['dataset_name'] = os.path.basename(csv_path)
+    print(pd.Categorical(df[target_column]).categories)
 
     return info_dict
 
