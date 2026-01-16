@@ -121,6 +121,7 @@ class Classifier:
             train_dataset,
             batch_size=batch_size,
             shuffle=True,
+            drop_last=True, # ValueError: Expected more than 1 value per channel when training, got input size torch.Size([1, 128])
         )
 
         # calculate the initial budget given the total number of iterations,

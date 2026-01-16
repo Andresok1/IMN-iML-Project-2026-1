@@ -59,7 +59,7 @@ def objective(
 
     return output_info['test_auroc']
 
-BATCH_SIZE = 16 # Standard war 64
+BATCH_SIZE = 32 # Standard war 64
 # ValueError: '16' not in (32, 64, 128, 256, 512)
 
 def hpo_main(args):

@@ -589,6 +589,17 @@ def get_dataset_from_csv(
     if 'customerID' in X.columns:
         X = X.drop(columns=['customerID'])
 
+    #Fix für Error
+    #ValueError: Expected more than 1 value per channel when training, got input size torch.Size([1, 128])
+    min_samples_per_class = 2
+
+    vc = y.value_counts()
+    valid_classes = vc[vc >= min_samples_per_class].index
+
+    mask = y.isin(valid_classes)
+    X = X.loc[mask].reset_index(drop=True)
+    y = y.loc[mask].reset_index(drop=True)
+
     categorical_indicator = X.dtypes == 'object'
     attribute_names = X.columns.to_numpy()
 
