@@ -21,6 +21,7 @@ def main(
     categorical_indicator: np.ndarray,
     attribute_names: np.ndarray,
     dataset_name: str,
+    output_directory: str
 ) -> Dict:
     """Main entry point for the experiment.
 
@@ -122,13 +123,15 @@ def main(
         wandb.config['model_name'] = model_name
         wandb.config['dataset_name'] = dataset_name
 
-    output_directory = os.path.join(
-        args.output_dir,
-        model_name,
-        f'{dataset_id}',
-        f'{seed}',
+    # output_directory = os.path.join(
+    #     args.output_dir,
+    #     model_name,
+    #     f'{dataset_id}',
+    #     f'{seed}',
 
-    )
+    # )
+
+
     os.makedirs(output_directory, exist_ok=True)
 
     args.nr_epochs = hp_config['nr_epochs']
