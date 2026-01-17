@@ -1,0 +1,19 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python Debugger: Python File",
+            "type": "debugpy",
+            "request": "launch",
+            // "program": "${file}"
+            "program": "${workspaceFolder}/hpo_main_experiment.py",
+              "args": [
+                    "--hpo_tuning",
+                    "--n_trials", "1",
+                    "--disable_wandb",
+                    "--interpretable",
+                    "--dataset_id", "0"
+                ]
+        }
+    ]
+}
