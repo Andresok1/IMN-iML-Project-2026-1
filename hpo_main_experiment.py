@@ -21,6 +21,7 @@ def objective(
     categorical_indicator: np.ndarray,
     attribute_names: np.ndarray,
     dataset_name: str,
+    output_directory: str, 
 ) -> float:
     """The objective function for hyperparameter optimization.
 
@@ -55,6 +56,7 @@ def objective(
         categorical_indicator,
         attribute_names,
         dataset_name,
+        output_directory,
     )
 
     return output_info['test_auroc']
@@ -63,7 +65,7 @@ def objective(
 def hpo_main(args):
     """The main function for hyperparameter optimization."""
 
-    info = get_dataset(
+    info_cluster = get_dataset(
         args.dataset_id,
         test_split_size=args.test_split_size,
         seed=args.seed,
@@ -72,103 +74,115 @@ def hpo_main(args):
 
     )
 
-    dataset_name = info['dataset_name']
-    attribute_names = info['attribute_names']
+    for cluster_id, info in info_cluster.items():
 
-    X_train = info['X_train']
-    X_test = info['X_test']
+        dataset_name = info['dataset_name']
+        attribute_names = info['attribute_names']
 
-    y_train = info['y_train']
-    y_test = info['y_test']
+        X_train = info['X_train']
+        X_test = info['X_test']
 
-    if args.hpo_tuning:
-        X_valid = info['X_valid']
-        y_valid = info['y_valid']
+        y_train = info['y_train']
+        y_test = info['y_test']
 
-    categorical_indicator = info['categorical_indicator']
-    model_name = 'inn' if args.interpretable else 'tabresnet'
-    output_directory = os.path.join(
+        if args.hpo_tuning:
+            X_valid = info['X_valid']
+            y_valid = info['y_valid']
+
+        categorical_indicator = info['categorical_indicator']
+        model_name = 'inn' if args.interpretable else 'tabresnet'
+        # output_directory = os.path.join(
+        #     args.output_dir,
+        #     model_name,
+        #     f'{args.dataset_id}',
+        #     f'{args.seed}',
+        # )
+
+        output_directory = os.path.join(
         args.output_dir,
         model_name,
-        f'{args.dataset_id}',
-        f'{args.seed}',
-    )
-
-    os.makedirs(output_directory, exist_ok=True)
-
-    best_params = None
-    if args.hpo_tuning:
-
-        time_limit = 60 * 60
-        study = optuna.create_study(
-            direction='maximize',
-            sampler=optuna.samplers.TPESampler(seed=args.seed),
+        f'dataset_{args.dataset_id}',  
+        f'seed_{args.seed}', 
+        f'clusters_{cluster_id}'
         )
 
-        # queue default configurations as the first trials
-        if args.interpretable:
-            study.enqueue_trial(
-                {
-                    'nr_epochs': 500,
-                    'batch_size': 64,
-                    'learning_rate': 0.01,
-                    'weight_decay': 0.01,
-                    'weight_norm': 0.1,
-                    'dropout_rate': 0.25,
-                }
-            )
-        else:
-            study.enqueue_trial(
-                {
-                    'nr_epochs': 500,
-                    'batch_size': 64,
-                    'learning_rate': 0.01,
-                    'weight_decay': 0.01,
-                    'dropout_rate': 0.25,
-                }
+        os.makedirs(output_directory, exist_ok=True)
+
+        best_params = None
+        if args.hpo_tuning:
+
+            time_limit = 60 * 60
+            study = optuna.create_study(
+                direction='maximize',
+                sampler=optuna.samplers.TPESampler(seed=args.seed),
             )
 
-        try:
-            study.optimize(
-                lambda trial: objective(
-                    trial,
-                    args,
-                    X_train,
-                    y_train,
-                    X_valid,
-                    y_valid,
-                    categorical_indicator,
-                    attribute_names,
-                    dataset_name,
-                ),
-                n_trials=args.n_trials,
-                timeout=time_limit,
-            )
-        except optuna.exceptions.OptunaError as e:
-            print(f'Optimization stopped: {e}')
+            # queue default configurations as the first trials
+            if args.interpretable:
+                study.enqueue_trial(
+                    {
+                        'nr_epochs': 100,
+                        'batch_size': 64,
+                        'learning_rate': 0.01,
+                        'weight_decay': 0.01,
+                        'weight_norm': 0.1,
+                        'dropout_rate': 0.25,
+                    }
+                )
+            else:
+                study.enqueue_trial(
+                    {
+                        'nr_epochs': 100,
+                        'batch_size': 64,
+                        'learning_rate': 0.01,
+                        'weight_decay': 0.01,
+                        'dropout_rate': 0.25,
+                    }
+                )
 
-        best_params = study.best_params
-        trial_df = study.trials_dataframe(attrs=('number', 'value', 'params', 'state'))
-        trial_df.to_csv(os.path.join(output_directory, 'trials.csv'), index=False)
+            try:
+                study.optimize(
+                    lambda trial: objective(
+                        trial,
+                        args,
+                        X_train,
+                        y_train,
+                        X_valid,
+                        y_valid,
+                        categorical_indicator,
+                        attribute_names,
+                        dataset_name,
+                        output_directory,
+                    ),
+                    n_trials=args.n_trials,
+                    timeout=time_limit,
+                )
+            except optuna.exceptions.OptunaError as e:
+                print(f'Optimization stopped: {e}')
 
-    # concatenate train and validation
-    X_train = pd.concat([X_train, X_valid], axis=0)
-    y_train = np.concatenate([y_train, y_valid], axis=0)
+            best_params = study.best_params
+            trial_df = study.trials_dataframe(attrs=('number', 'value', 'params', 'state'))
+            trial_df.to_csv(os.path.join(output_directory, 'trials.csv'), index=False)
 
-    output_info = main(
-        args,
-        best_params if args.hpo_tuning else None,
-        X_train,
-        y_train,
-        X_test,
-        y_test,
-        categorical_indicator,
-        attribute_names,
-        dataset_name,
-    )
+        # concatenate train and validation
+        X_train = pd.concat([X_train, X_valid], axis=0)
+        y_train = np.concatenate([y_train, y_valid], axis=0)
 
-    with open(os.path.join(output_directory, 'output_info.json'), 'w') as f:
-        json.dump(output_info, f)
+        output_info = main(
+            args,
+            best_params if args.hpo_tuning else None,
+            X_train,
+            y_train,
+            X_test,
+            y_test,
+            categorical_indicator,
+            attribute_names,
+            dataset_name,
+            output_directory,
+        )
+
+        with open(os.path.join(output_directory, 'output_info.json'), 'w') as f:
+            json.dump(output_info, f)
 
 
 if __name__ == "__main__":
