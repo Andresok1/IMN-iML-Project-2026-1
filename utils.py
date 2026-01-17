@@ -14,6 +14,7 @@ from sklearn.preprocessing import (
 )
 import torch
 import torch.nn as nn
+from tools import gower_hierarchical_clustering
 from get_tab_data import get_dataset_table
 from pathlib import Path
 
@@ -363,9 +364,19 @@ def preprocess_dataset(
 
     # take pandas categories into account
     for cat_indicator, column_name in zip(categorical_indicator, X.keys()):
+        # print("Column", column_name, "dtype:", X[column_name].dtype)
+        if X[column_name].dtype == "object":
+            X[column_name] = X[column_name].astype("category")
+
         if cat_indicator:
-            column_categories = list(X[column_name].cat.categories)
-            column_category_values.append(column_categories)
+            if pd.api.types.is_categorical_dtype(X[column_name]):
+                column_categories = list(X[column_name].cat.categories)
+            else:
+                column_categories = None
+        else:
+            column_categories = None
+
+        column_category_values.append(column_categories)
 
     X_train, X_test, y_train, y_test = train_test_split(
         X,
@@ -545,26 +556,85 @@ def get_dataset(
         info_dict: A dictionary with the preprocessed data and additional information
     """
     # Get the data
-    dataset = openml.datasets.get_dataset(dataset_id, download_data=False)              #TODO
-    dataset_name = dataset.name
-    X, y, categorical_indicator, attribute_names = dataset.get_data(
-        dataset_format='dataframe',
-        target=dataset.default_target_attribute,
-    )
-    info_dict = preprocess_dataset(
-        X,
-        y,
-        encode_categorical,
-        categorical_indicator,
-        attribute_names,
-        test_split_size=test_split_size,
-        seed=seed,
-        encoding_type=encoding_type,
-        hpo_tuning=hpo_tuning,
-    )
-    info_dict['dataset_name'] = dataset_name
+    if dataset_id == 0:
+        BASE_DIR = Path(__file__).resolve().parent
+        DATASETS_DIR = BASE_DIR / "datasets"
+        csv_path = DATASETS_DIR / "WA_Fn-UseC_-Telco-Customer-Churn.csv"
 
-    return info_dict
+        dataset = pd.read_csv(csv_path)
+        dataset = dataset.drop(columns=["customerID"])
+        X = dataset.drop(columns=["Churn"])
+        y = dataset["Churn"].map({"No": 0, "Yes": 1}).astype(int)
+
+        attribute_names = X.columns.tolist()                                                #feature names
+        numerical_cols = [
+            "tenure",
+            "MonthlyCharges",
+            "TotalCharges"
+        ]
+
+        for col in numerical_cols:
+            X[col] = pd.to_numeric(X[col], errors="coerce")
+
+        X = X.dropna(subset=numerical_cols)
+
+        y = y.loc[X.index]
+
+        categorical_cols = [col for col in X.columns if col not in numerical_cols]
+        
+        # for col in categorical_cols:
+        #     X[col] = X[col].astype("category")
+
+        categorical_indicator = [col in categorical_cols for col in X.columns]                  #which columns are categorical
+
+        print("Categorical columns:", categorical_cols)
+        print("Numerical columns:", numerical_cols)
+
+        dataset_name = csv_path.stem
+
+        # Gower 
+
+        clusters= gower_hierarchical_clustering(X, y, categorical_cols, numerical_cols, plot_dendrogram=False)
+
+        X_cluster_1, y_cluster_1 = clusters[1]
+        X_cluster_2, y_cluster_2 = clusters[2]
+
+        print(f"Cluster 1 size: {len(X_cluster_1)}")
+        print(f"Cluster 2 size: {len(X_cluster_2)}")
+        
+
+
+    else:
+        dataset = openml.datasets.get_dataset(dataset_id, download_data=False)             
+
+        dataset_name = dataset.name
+        X, y, categorical_indicator, attribute_names = dataset.get_data(
+            dataset_format='dataframe',
+            target=dataset.default_target_attribute,
+       )
+    
+    info_cluster= {}
+    
+    for i in range(1, len(clusters) + 1):
+        X_cluster, y_cluster = clusters[i]
+
+        info_dict = preprocess_dataset(
+            X_cluster,
+            y_cluster,
+            encode_categorical,
+            categorical_indicator,
+            attribute_names,
+            test_split_size=test_split_size,
+            seed=seed,
+            encoding_type=encoding_type,
+            hpo_tuning=hpo_tuning,
+        )
+        info_dict['dataset_name'] = dataset_name
+        info_cluster[i]= info_dict
+
+    print("info cluster:", info_cluster)
+
+    return info_cluster
 
 
 class BasicBlock(nn.Module):
