@@ -72,7 +72,7 @@ def hpo_main(args):
         seed=args.seed,
         encode_categorical=True,
         hpo_tuning=args.hpo_tuning,
-        create_clusters=True,
+        create_clusters=args.create_clusters,
     )
 
     timestamp_exists= False
@@ -94,12 +94,6 @@ def hpo_main(args):
 
         categorical_indicator = info['categorical_indicator']
         model_name = 'inn' if args.interpretable else 'tabresnet'
-        # output_directory = os.path.join(
-        #     args.output_dir,
-        #     model_name,
-        #     f'{args.dataset_id}',
-        #     f'{args.seed}',
-        # )
 
         if not timestamp_exists:
             timestamp = time.strftime("%Y-%m-%d_%H-%M-%S", time.gmtime()) 
