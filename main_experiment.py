@@ -75,36 +75,36 @@ def main(
     for i in range(nr_classes):                      
         dataset_classes[i] = []     
 
-    for index, label in enumerate(y_train):             #agrupa los i (posiciones) de las instancias por cada clase (separa las clases)
+    for index, label in enumerate(y_train):             #which examples belong to which class (amount of instances per class)
         dataset_classes[label].append(index)
 
     majority_class_nr = -1
-    for i in range(nr_classes):                             # se identifica la clase mayoritaria
+    for i in range(nr_classes):                             #find the size of the majority class
         if len(dataset_classes[i]) > majority_class_nr:
             majority_class_nr = len(dataset_classes[i])
 
     examples_train = []
     labels_train = []
-#se le hace oversampling a las clases minoritarias
+    # oversample minority classes
     for i in range(nr_classes):                             
         nr_instances_class = len(dataset_classes[i])
         if nr_instances_class < majority_class_nr:
             # oversample
-            oversampled_indices = np.random.choice(             #toma con replace indices para hacer oversampling y llenar hasta alcanzar el tamaño
+            oversampled_indices = np.random.choice(             #oversampling to balance classes
                 dataset_classes[i],
                 majority_class_nr - nr_instances_class,
                 replace=True,
             )
-            examples_train.extend(X_train[dataset_classes[i]])  #se agregan las instancias originales
+            examples_train.extend(X_train[dataset_classes[i]])      #original instances added
             labels_train.extend(y_train[dataset_classes[i]])
-            for index in oversampled_indices:           #se agregan las instancias oversampleadas 
+            for index in oversampled_indices:                       #oversampled instances added 
                 examples_train.append(X_train[index])
                 labels_train.append(y_train[index])
         else:
-            examples_train.extend(X_train[dataset_classes[i]])      #caso de la clase mayoritaria
+            examples_train.extend(X_train[dataset_classes[i]])      
             labels_train.extend(y_train[dataset_classes[i]])
 
-    network_configuration = {                                   #configuracion de la network
+    network_configuration = {                                   #network configuration
         'nr_features': nr_features,
         'nr_classes': nr_classes if nr_classes > 2 else 1,
         'nr_blocks': args.nr_blocks,
@@ -115,21 +115,13 @@ def main(
 
     interpretable = args.interpretable
     model_name = 'inn' if interpretable else 'tabresnet'
-    if not args.disable_wandb:                #config wandb, no afecta training, solo logging
+    if not args.disable_wandb:                #config wandb logging, do not affect training
         wandb.init(
             project='INN',
             config=args,
         )
         wandb.config['model_name'] = model_name
         wandb.config['dataset_name'] = dataset_name
-
-    # output_directory = os.path.join(
-    #     args.output_dir,
-    #     model_name,
-    #     f'{dataset_id}',
-    #     f'{seed}',
-
-    # )
 
 
     os.makedirs(output_directory, exist_ok=True)
@@ -164,7 +156,7 @@ def main(
 
     inference_time = time.time() - start_time - train_time
 
-    test_predictions = test_predictions.cpu().numpy()               #convierte los tensores a numpy
+    test_predictions = test_predictions.cpu().numpy()               #tensor to numpy
     train_predictions = train_predictions.cpu().numpy()
 
     if interpretable:
@@ -187,7 +179,7 @@ def main(
         )
 
         # threshold the predictions if the model is binary
-        if nr_classes == 2:                                             #modelo binario
+        if nr_classes == 2:                                             #binary classification
             # threshold the predictions if the model is binary
             test_predictions = (test_predictions > 0.5).astype(int)     #umbrales para clasificar
             train_predictions = (train_predictions > 0.5).astype(int)
@@ -195,7 +187,7 @@ def main(
             test_predictions = np.argmax(test_predictions, axis=1)
             train_predictions = np.argmax(train_predictions, axis=1)
 
-        test_accuracy = accuracy_score(y_test, test_predictions)        #calculo de accuracy
+        test_accuracy = accuracy_score(y_test, test_predictions)        #accuracy via sklearn
         train_accuracy = accuracy_score(y_train, train_predictions)
 
         if not args.disable_wandb:                                      #logging en wandb
@@ -203,7 +195,7 @@ def main(
             wandb.run.summary["Test:auroc"] = test_auroc
             wandb.run.summary["Train:accuracy"] = train_accuracy
             wandb.run.summary["Train:auroc"] = train_auroc
-    else:                                                              #si no es clasificacion, es regresion, calcula mse
+    else:                                                              #if regression then mse calculation
         test_mse = mean_squared_error(y_test, test_predictions)
         train_mse = mean_squared_error(y_train, train_predictions)
         if not args.disable_wandb:                                    #logging en wandb                         
@@ -232,10 +224,10 @@ def main(
         # average the importance over the examples
         weight_importances = np.mean(weight_importances, axis=0)
 
-        sorted_idx = np.argsort(weight_importances)[::-1]                   #ordena de mayor a menor las features por importancia
+        sorted_idx = np.argsort(weight_importances)[::-1]                   #orders indices of feature importances from high to low
         top_features = [attribute_names[i] for i in sorted_idx]
 
-        output_info['top_features'] = top_features                          #guarda en output info
+        output_info['top_features'] = top_features                          #save top features and their weights
         output_info['top_features_weights'] = weight_importances[sorted_idx].tolist()
         if not args.disable_wandb:
             wandb.run.summary["Top_features"] = top_features
