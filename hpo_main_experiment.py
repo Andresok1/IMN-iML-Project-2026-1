@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import time
 
 import numpy as np
 import optuna
@@ -71,9 +72,11 @@ def hpo_main(args):
         seed=args.seed,
         encode_categorical=True,
         hpo_tuning=args.hpo_tuning,
-
+        create_clusters=True,
     )
 
+    timestamp_exists= False
+    
     for cluster_id, info in info_cluster.items():
 
         dataset_name = info['dataset_name']
@@ -98,13 +101,27 @@ def hpo_main(args):
         #     f'{args.seed}',
         # )
 
-        output_directory = os.path.join(
-        args.output_dir,
-        model_name,
-        f'dataset_{args.dataset_id}',  
-        f'seed_{args.seed}', 
-        f'clusters_{cluster_id}'
-        )
+        if not timestamp_exists:
+            timestamp = time.strftime("%Y-%m-%d_%H-%M-%S", time.gmtime()) 
+            timestamp_exists = True
+            timestamp_saved = timestamp
+
+        if args.create_clusters:
+            output_directory = os.path.join(
+                args.output_dir,
+                model_name,
+                f'dataset_{args.dataset_id}_{timestamp_saved}',
+                f'seed_{args.seed}', 
+                f'clusters_{cluster_id}'
+            )
+        else:
+            output_directory = os.path.join(
+                args.output_dir,
+                model_name,
+                f'dataset_{args.dataset_id}_no_clusters_{timestamp_saved}',
+                f'seed_{args.seed}', 
+                f'clusters_{cluster_id}'
+            )
 
         os.makedirs(output_directory, exist_ok=True)
 
@@ -276,6 +293,11 @@ if __name__ == "__main__":
         '--disable_wandb',
         action='store_true',
         help='Whether to disable wandb logging',
+    )
+    parser.add_argument(
+        '--create_clusters',
+        action='store_true',
+        help='Whether to create clusters in the dataset',
     )
 
     args = parser.parse_args()
