@@ -540,7 +540,7 @@ def get_dataset(
     encode_categorical: bool = True,
     encoding_type: str = 'ordinal',
     hpo_tuning: bool = False,
-    create_clusters: bool = True,
+    create_clusters: bool = False,
 ) -> Dict:
     """Get/Preprocess the dataset.
 
