@@ -1,0 +1,3 @@
+python hpo_main_experiment.py --hpo_tuning --n_trials 1 --disable_wandb --interpretable --dataset_id 0 --create_clusters
+
+python hpo_main_experiment.py --hpo_tuning --n_trials 1 --disable_wandb --interpretable --dataset_id 0
