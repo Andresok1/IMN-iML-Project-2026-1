@@ -540,6 +540,7 @@ def get_dataset(
     encode_categorical: bool = True,
     encoding_type: str = 'ordinal',
     hpo_tuning: bool = False,
+    create_clusters: bool = True,
 ) -> Dict:
     """Get/Preprocess the dataset.
 
@@ -592,15 +593,17 @@ def get_dataset(
 
         dataset_name = csv_path.stem
 
-        # Gower 
+        if create_clusters:
+            # Gower 
+            clusters= gower_hierarchical_clustering(X, y, categorical_cols, numerical_cols, plot_dendrogram=False)
 
-        clusters= gower_hierarchical_clustering(X, y, categorical_cols, numerical_cols, plot_dendrogram=False)
+            X_cluster_1, y_cluster_1 = clusters[1]
+            X_cluster_2, y_cluster_2 = clusters[2]
 
-        X_cluster_1, y_cluster_1 = clusters[1]
-        X_cluster_2, y_cluster_2 = clusters[2]
-
-        print(f"Cluster 1 size: {len(X_cluster_1)}")
-        print(f"Cluster 2 size: {len(X_cluster_2)}")
+            print(f"Cluster 1 size: {len(X_cluster_1)}")
+            print(f"Cluster 2 size: {len(X_cluster_2)}")
+        else:
+            clusters= {1: (X, y)}
         
 
 
