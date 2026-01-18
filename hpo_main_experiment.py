@@ -74,6 +74,7 @@ def hpo_main(args):
             seed=args.seed,
             encode_categorical=True,
             hpo_tuning=args.hpo_tuning,
+            n_clusters = 3
         )
     else:
         info = get_dataset(
@@ -84,6 +85,90 @@ def hpo_main(args):
             hpo_tuning=args.hpo_tuning,
         )
 
+    # Clustering
+    if info.get("clustered", False):
+        print(f"Training {info['n_clusters']} cluster-specific models")
+
+        for cid, cluster_info in info["clusters"].items():
+            print(f"\n===== Cluster {cid} =====")
+
+            dataset_name = cluster_info["dataset_name"]
+            attribute_names = cluster_info["attribute_names"]
+            categorical_indicator = cluster_info["categorical_indicator"]
+
+            X_train = cluster_info["X_train"]
+            y_train = cluster_info["y_train"]
+            X_test = cluster_info["X_test"]
+            y_test = cluster_info["y_test"]
+
+            if args.hpo_tuning:
+                X_valid = cluster_info["X_valid"]
+                y_valid = cluster_info["y_valid"]
+
+            model_name = 'inn' if args.interpretable else 'tabresnet'
+            output_directory = os.path.join(
+                args.output_dir,
+                model_name,
+                f'{dataset_name}',
+                f'{args.seed}',
+            )
+            os.makedirs(output_directory, exist_ok=True)
+
+            best_params = None
+            if args.hpo_tuning:
+                time_limit = 60 * 60
+                study = optuna.create_study(
+                    direction='maximize',
+                    sampler=optuna.samplers.TPESampler(seed=args.seed),
+                )
+
+                study.optimize(
+                    lambda trial: objective(
+                        trial,
+                        args,
+                        X_train,
+                        y_train,
+                        X_valid,
+                        y_valid,
+                        categorical_indicator,
+                        attribute_names,
+                        dataset_name,
+                    ),
+                    n_trials=args.n_trials,
+                    timeout=time_limit,
+                )
+
+                best_params = study.best_params
+
+                trial_df = study.trials_dataframe(
+                    attrs=('number', 'value', 'params', 'state')
+                )
+                trial_df.to_csv(
+                    os.path.join(output_directory, 'trials.csv'),
+                    index=False,
+                )
+
+                X_train = pd.concat([X_train, X_valid], axis=0)
+                y_train = np.concatenate([y_train, y_valid], axis=0)
+
+            output_info = main(
+                args,
+                best_params,
+                X_train,
+                y_train,
+                X_test,
+                y_test,
+                categorical_indicator,
+                attribute_names,
+                dataset_name,
+            )
+
+            with open(os.path.join(output_directory, 'output_info.json'), 'w') as f:
+                json.dump(output_info, f)
+
+        return
+
+    # Alter Code, kein Clustering
     dataset_name = info['dataset_name']
     attribute_names = info['attribute_names']
 

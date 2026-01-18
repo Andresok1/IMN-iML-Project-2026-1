@@ -4,6 +4,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 import openml
 import pandas as pd
+from sklearn.cluster import KMeans
 from sklearn.compose import ColumnTransformer
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import (
@@ -575,6 +576,7 @@ def get_dataset_from_csv(
     encode_categorical: bool = True,
     encoding_type: str = 'ordinal',
     hpo_tuning: bool = False,
+    n_clusters: int = 1, # für Clustering
 ) -> Dict:
     """Load and preprocess a dataset from a local CSV file."""
 
@@ -609,7 +611,39 @@ def get_dataset_from_csv(
             X[col] = X[col].astype('category')
 
     # Wie get_data Funktion, Preprocessing
-    info_dict = preprocess_dataset(
+    # Clustering
+    if n_clusters > 1:
+        clusters = split_dataset_by_clustering(
+            X,
+            y,
+            n_clusters=n_clusters,
+            random_state=seed,
+        )
+
+        cluster_infos = {}
+        for cid, (X_c, y_c) in clusters.items():
+            info = preprocess_dataset(
+                X_c,
+                y_c,
+                encode_categorical,
+                categorical_indicator.to_numpy(),
+                attribute_names,
+                test_split_size=test_split_size,
+                seed=seed,
+                encoding_type=encoding_type,
+                hpo_tuning=hpo_tuning,
+            )
+            info["dataset_name"] = f"{os.path.basename(csv_path)}_cluster_{cid}"
+            cluster_infos[cid] = info
+
+        return {
+            "clustered": True,
+            "clusters": cluster_infos,
+            "n_clusters": n_clusters,
+        }
+
+    # kein Clustering
+    info = preprocess_dataset(
         X,
         y,
         encode_categorical,
@@ -621,10 +655,50 @@ def get_dataset_from_csv(
         hpo_tuning=hpo_tuning,
     )
 
-    info_dict['dataset_name'] = os.path.basename(csv_path)
-    print(pd.Categorical(df[target_column]).categories)
+    info["dataset_name"] = os.path.basename(csv_path)
+    return info
 
-    return info_dict
+def split_dataset_by_clustering(
+    X: pd.DataFrame,
+    y: pd.Series,
+    n_clusters: int = 3,
+    random_state: int = 11,
+):
+    """
+    Split dataset into K clusters using KMeans (feature-based, unsupervised).
+
+    Returns:
+        Dict[int, Tuple[X_cluster, y_cluster]]
+    """
+
+    # Nur numerische Features fürs Clustering
+    X_num = X.select_dtypes(include=[np.number])
+
+    if X_num.shape[1] == 0:
+        raise ValueError("Clustering requires at least one numerical feature.")
+
+    # Skalieren (sehr wichtig)
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X_num)
+
+    # KMeans
+    kmeans = KMeans(
+        n_clusters=n_clusters,
+        random_state=random_state,
+        n_init=10,
+    )
+    cluster_labels = kmeans.fit_predict(X_scaled)
+
+    # Aufteilen
+    clustered_data = {}
+    for cluster_id in range(n_clusters):
+        mask = cluster_labels == cluster_id
+        clustered_data[cluster_id] = (
+            X.loc[mask].reset_index(drop=True),
+            y.loc[mask].reset_index(drop=True),
+        )
+
+    return clustered_data
 
 
 class BasicBlock(nn.Module):
