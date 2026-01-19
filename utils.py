@@ -5,6 +5,7 @@ import numpy as np
 import openml
 import pandas as pd
 from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
 from sklearn.compose import ColumnTransformer
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import (
@@ -16,6 +17,7 @@ from sklearn.preprocessing import (
 )
 import torch
 import torch.nn as nn
+import matplotlib.pyplot as plt
 
 
 def prepare_data_for_cutmix(
@@ -613,7 +615,7 @@ def get_dataset_from_csv(
     # Wie get_data Funktion, Preprocessing
     # Clustering
     if n_clusters > 1:
-        clusters = split_dataset_by_clustering(
+        clusters, cluster_labels = split_dataset_by_clustering(
             X,
             y,
             n_clusters=n_clusters,
@@ -640,6 +642,8 @@ def get_dataset_from_csv(
             "clustered": True,
             "clusters": cluster_infos,
             "n_clusters": n_clusters,
+            "cluster_labels": cluster_labels,
+            "X_for_clustering": X.select_dtypes(include=[np.number]),
         }
 
     # kein Clustering
@@ -698,8 +702,7 @@ def split_dataset_by_clustering(
             y.loc[mask].reset_index(drop=True),
         )
 
-    return clustered_data
-
+    return clustered_data, cluster_labels
 
 class BasicBlock(nn.Module):
 
@@ -762,3 +765,63 @@ def make_residual_block(
         A residual block.
     """
     return BasicBlock(in_features, output_features, dropout_rate)
+
+# Hilfsfunktion für die Ordnerstruktur
+def get_next_run_id(base_dir: str) -> str:
+    os.makedirs(base_dir, exist_ok=True)
+    existing = [
+        int(d) for d in os.listdir(base_dir)
+        if d.isdigit() and os.path.isdir(os.path.join(base_dir, d))
+    ]
+    return str(max(existing) + 1) if existing else "0"
+
+# Balkendiagramm für die Gewichte
+def plot_top_features(
+    output_info: dict,
+    out_dir: str,
+    top_k: int = 15,
+    filename: str = "top_features.png",
+):
+    if "top_features" not in output_info:
+        return  # nichts zu plotten (z.B. nicht-interpretable Modell)
+
+    features = output_info["top_features"][:top_k]
+    weights = output_info["top_features_weights"][:top_k]
+
+    plt.figure(figsize=(8, 5))
+    plt.barh(features[::-1], weights[::-1])  # umdrehen für schöne Sortierung
+    plt.xlabel("Feature Importance")
+    plt.title("Top Feature Importances")
+    plt.tight_layout()
+
+    plt.savefig(os.path.join(out_dir, filename))
+    plt.close()
+
+def plot_clusters_pca(
+    X_num: pd.DataFrame,
+    cluster_labels: np.ndarray,
+    out_dir: str,
+    filename: str = "clusters_pca.png",
+):
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X_num)
+
+    pca = PCA(n_components=2, random_state=11)
+    X_pca = pca.fit_transform(X_scaled)
+
+    plt.figure(figsize=(7, 6))
+    plt.scatter(
+        X_pca[:, 0],
+        X_pca[:, 1],
+        c=cluster_labels,
+        cmap="tab10",
+        alpha=0.7,
+    )
+
+    plt.xlabel(f"PCA 1 ({pca.explained_variance_ratio_[0]*100:.1f}%)")
+    plt.ylabel(f"PCA 2 ({pca.explained_variance_ratio_[1]*100:.1f}%)")
+    plt.title("Cluster visualization (PCA)")
+    plt.tight_layout()
+
+    plt.savefig(os.path.join(out_dir, filename))
+    plt.close()

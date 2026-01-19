@@ -8,7 +8,7 @@ import pandas as pd
 
 from main_experiment import main
 from search_spaces import hpo_space_imn, hpo_space_tabresnet
-from utils import get_dataset, get_dataset_from_csv
+from utils import get_dataset, get_dataset_from_csv, get_next_run_id, plot_top_features, plot_clusters_pca
 
 
 def objective(
@@ -45,6 +45,9 @@ def objective(
     else:
         hp_config = hpo_space_tabresnet(trial)
 
+    tmp_dir = os.path.join(args.output_dir, "hpo_temp")
+    os.makedirs(tmp_dir, exist_ok=True)
+
     output_info = main(
         args,
         hp_config,
@@ -55,6 +58,7 @@ def objective(
         categorical_indicator,
         attribute_names,
         dataset_name,
+        output_dir=tmp_dir,
     )
 
     return output_info['test_auroc']
@@ -76,6 +80,9 @@ def hpo_main(args):
             hpo_tuning=args.hpo_tuning,
             n_clusters = 3
         )
+        dataset_name = os.path.splitext(
+            os.path.basename(args.dataset_path)
+        )[0]
     else:
         info = get_dataset(
             args.dataset_id,
@@ -84,15 +91,32 @@ def hpo_main(args):
             encode_categorical=True,
             hpo_tuning=args.hpo_tuning,
         )
+        dataset_name = info["dataset_name"]
+
+    #Ausgabe neue Ordnerstruktur
+    dataset_out_dir = os.path.join(args.output_dir, dataset_name)
+    run_id = get_next_run_id(dataset_out_dir)
+    run_out_dir = os.path.join(dataset_out_dir, run_id)
+    os.makedirs(run_out_dir, exist_ok=True)
 
     # Clustering
     if info.get("clustered", False):
         print(f"Training {info['n_clusters']} cluster-specific models")
+        print(f"Output directory: {run_out_dir}")
+
+        plot_clusters_pca(
+            info["X_for_clustering"],
+            info["cluster_labels"],
+            out_dir=run_out_dir,
+            filename="clusters_pca.png",
+        )
 
         for cid, cluster_info in info["clusters"].items():
             print(f"\n===== Cluster {cid} =====")
 
-            dataset_name = cluster_info["dataset_name"]
+            cluster_out_dir = os.path.join(run_out_dir, f"cluster_{cid}")
+            os.makedirs(cluster_out_dir, exist_ok=True)
+
             attribute_names = cluster_info["attribute_names"]
             categorical_indicator = cluster_info["categorical_indicator"]
 
@@ -105,15 +129,6 @@ def hpo_main(args):
                 X_valid = cluster_info["X_valid"]
                 y_valid = cluster_info["y_valid"]
 
-            model_name = 'inn' if args.interpretable else 'tabresnet'
-            output_directory = os.path.join(
-                args.output_dir,
-                model_name,
-                f'{dataset_name}',
-                f'{args.seed}',
-            )
-            os.makedirs(output_directory, exist_ok=True)
-
             best_params = None
             if args.hpo_tuning:
                 time_limit = 60 * 60
@@ -122,21 +137,47 @@ def hpo_main(args):
                     sampler=optuna.samplers.TPESampler(seed=args.seed),
                 )
 
-                study.optimize(
-                    lambda trial: objective(
-                        trial,
-                        args,
-                        X_train,
-                        y_train,
-                        X_valid,
-                        y_valid,
-                        categorical_indicator,
-                        attribute_names,
-                        dataset_name,
-                    ),
-                    n_trials=args.n_trials,
-                    timeout=time_limit,
-                )
+                # queue default configurations as the first trials
+                if args.interpretable:
+                    study.enqueue_trial(
+                        {
+                            'nr_epochs': 500,
+                            'batch_size': BATCH_SIZE,
+                            'learning_rate': 0.01,
+                            'weight_decay': 0.01,
+                            'weight_norm': 0.1,
+                            'dropout_rate': 0.25,
+                        }
+                    )
+                else:
+                    study.enqueue_trial(
+                        {
+                            'nr_epochs': 500,
+                            'batch_size': BATCH_SIZE,
+                            'learning_rate': 0.01,
+                            'weight_decay': 0.01,
+                            'dropout_rate': 0.25,
+                        }
+                    )
+
+                try:
+                    study.optimize(
+                        lambda trial: objective(
+                            trial,
+                            args,
+                            X_train,
+                            y_train,
+                            X_valid,
+                            y_valid,
+                            categorical_indicator,
+                            attribute_names,
+                            dataset_name,
+                        ),
+                        n_trials=args.n_trials,
+                        timeout=time_limit,
+                    )
+                except optuna.exceptions.OptunaError as e:
+                    print(f'Optimization stopped: {e}')
 
                 best_params = study.best_params
 
@@ -144,14 +185,14 @@ def hpo_main(args):
                     attrs=('number', 'value', 'params', 'state')
                 )
                 trial_df.to_csv(
-                    os.path.join(output_directory, 'trials.csv'),
+                    os.path.join(cluster_out_dir, 'trials.csv'),
                     index=False,
                 )
 
                 X_train = pd.concat([X_train, X_valid], axis=0)
                 y_train = np.concatenate([y_train, y_valid], axis=0)
 
-            output_info = main(
+            output_info = main( #Hier erstelle ich das Modell
                 args,
                 best_params,
                 X_train,
@@ -161,16 +202,20 @@ def hpo_main(args):
                 categorical_indicator,
                 attribute_names,
                 dataset_name,
+                output_directory=cluster_out_dir, # Model.pt richtig im Ordner speichern
             )
 
-            with open(os.path.join(output_directory, 'output_info.json'), 'w') as f:
-                json.dump(output_info, f)
+            # Plot erzeugen
+            plot_top_features(output_info, cluster_out_dir)
+
+            with open(os.path.join(cluster_out_dir, 'output_info.json'), 'w') as f:
+                json.dump(output_info, f, indent=2)
 
         return
 
     # Alter Code, kein Clustering
-    dataset_name = info['dataset_name']
     attribute_names = info['attribute_names']
+    categorical_indicator = info['categorical_indicator']
 
     X_train = info['X_train']
     X_test = info['X_test']
@@ -182,7 +227,6 @@ def hpo_main(args):
         X_valid = info['X_valid']
         y_valid = info['y_valid']
 
-    categorical_indicator = info['categorical_indicator']
     model_name = 'inn' if args.interpretable else 'tabresnet'
     output_directory = os.path.join(
         args.output_dir,
@@ -263,6 +307,9 @@ def hpo_main(args):
         attribute_names,
         dataset_name,
     )
+
+    # Plot erzeugen
+    plot_top_features(output_info, output_directory)
 
     with open(os.path.join(output_directory, 'output_info.json'), 'w') as f:
         json.dump(output_info, f)

@@ -21,6 +21,7 @@ def main(
     categorical_indicator: np.ndarray,
     attribute_names: np.ndarray,
     dataset_name: str,
+    output_dir: str,
 ) -> Dict:
     """Main entry point for the experiment.
 
@@ -34,6 +35,7 @@ def main(
         categorical_indicator: The categorical indicator for the features.
         attribute_names: The feature names.
         dataset_name: The name of the dataset.
+        output_dir:
 
     Returns:
         output_info: A dictionary with the main results from the experiment.
@@ -145,7 +147,7 @@ def main(
         attribute_names=attribute_names,
         model_name=model_name,
         device=dev,
-        output_directory=output_directory,
+        output_directory=output_dir,
         disable_wandb=args.disable_wandb,
     )
 

@@ -257,7 +257,15 @@ class Classifier:
                 wandb.log({"Train:loss": loss_value, "Train:auroc": train_auroc,
                            "Learning rate": optimizer.param_groups[0]['lr']})
 
-        torch.save(self.model.state_dict(), os.path.join(self.output_directory, 'model.pt'))
+        #torch.save(self.model.state_dict(), os.path.join(self.output_directory, 'model.pt'))
+
+        # Verändert
+        if self.output_directory is not None:
+            model_path = os.path.join(self.output_directory, "model.pt")
+        else:
+            model_path = "model.pt"
+
+        torch.save(self.model.state_dict(), model_path)
 
         return self
 
