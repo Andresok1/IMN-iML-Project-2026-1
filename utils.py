@@ -3,6 +3,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 import openml
 import pandas as pd
+from sklearn.cluster import AgglomerativeClustering
 from sklearn.compose import ColumnTransformer
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import (
@@ -583,28 +584,24 @@ def get_dataset(
 
         categorical_cols = [col for col in X.columns if col not in numerical_cols]
         
-        # for col in categorical_cols:
-        #     X[col] = X[col].astype("category")
-
         categorical_indicator = [col in categorical_cols for col in X.columns]                  #which columns are categorical
 
-        print("Categorical columns:", categorical_cols)
-        print("Numerical columns:", numerical_cols)
+        # print("Categorical columns:", categorical_cols)
+        # print("Numerical columns:", numerical_cols)
 
         dataset_name = csv_path.stem
 
         if create_clusters:
             # Gower 
-            clusters= gower_hierarchical_clustering(X, y, categorical_cols, numerical_cols, plot_dendrogram=False)
+            clusters, D= gower_hierarchical_clustering(X, y, categorical_cols, numerical_cols, plot_dendrogram=False)
 
             X_cluster_1, y_cluster_1 = clusters[1]
             X_cluster_2, y_cluster_2 = clusters[2]
 
-            print(f"Cluster 1 size: {len(X_cluster_1)}")
-            print(f"Cluster 2 size: {len(X_cluster_2)}")
+            # print(f"Cluster 1 size: {len(X_cluster_1)}")
+            # print(f"Cluster 2 size: {len(X_cluster_2)}")
         else:
             clusters= {1: (X, y)}
-        
 
 
     else:
@@ -635,7 +632,7 @@ def get_dataset(
         info_dict['dataset_name'] = dataset_name
         info_cluster[i]= info_dict
 
-    print("info cluster:", info_cluster)
+    # print("info cluster:", info_cluster)
 
     return info_cluster
 
