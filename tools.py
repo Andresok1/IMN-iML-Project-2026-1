@@ -29,9 +29,9 @@ def gower_hierarchical_clustering(X, y, categorical_cols, numerical_cols,  plot_
 
     cluster_labels = fcluster(Z, t=best_k, criterion='maxclust')
 
-    print(f"Number of clusters: {best_k}")
-    print(f"Cluster labels size: {len(cluster_labels)}")
-    print(f"len(X) labels size: {len(X_gower)}")
+    # print(f"Number of clusters: {best_k}")
+    # print(f"Cluster labels size: {len(cluster_labels)}")
+    # print(f"len(X) labels size: {len(X_gower)}")
 
     X_cluster_0 = X[cluster_labels == 1] 
     y_cluster_0 = y[cluster_labels == 1] 
@@ -42,7 +42,7 @@ def gower_hierarchical_clustering(X, y, categorical_cols, numerical_cols,  plot_
     clusters = {i: (X[cluster_labels == i], y[cluster_labels == i]) for i in range(1, best_k + 1)}
 
 
-    return clusters
+    return clusters, D
 
 
 def silhouette_score_criterion(gower_matrix):
