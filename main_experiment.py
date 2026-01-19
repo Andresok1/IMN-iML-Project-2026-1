@@ -2,9 +2,11 @@ import argparse
 import os
 import time
 from typing import Dict
+from unittest import result
 
 import numpy as np
-from sklearn.metrics import accuracy_score, roc_auc_score, mean_squared_error
+from sklearn.inspection import permutation_importance
+from sklearn.metrics import accuracy_score, roc_auc_score, mean_squared_error, confusion_matrix
 import torch
 import wandb
 
@@ -148,7 +150,11 @@ def main(
     model.fit(X_train, y_train)
     train_time = time.time() - start_time
     if interpretable:
-        test_predictions, weight_importances = model.predict(X_test, y_test, return_weights=True)
+        test_predictions, weight_importances = model.predict(X_test, y_test, return_weights=True)           #weights for feature importance per cluster
+
+        # print("weights.shape:", weight_importances.shape)
+
+        # print("weights.size():", weight_importances.size())
     else:
         test_predictions = model.predict(X_test, y_test)
 
@@ -181,7 +187,7 @@ def main(
         # threshold the predictions if the model is binary
         if nr_classes == 2:                                             #binary classification
             # threshold the predictions if the model is binary
-            test_predictions = (test_predictions > 0.5).astype(int)     #umbrales para clasificar
+            test_predictions = (test_predictions > 0.5).astype(int)     #classification threshold 0.5
             train_predictions = (train_predictions > 0.5).astype(int)
         else:
             test_predictions = np.argmax(test_predictions, axis=1)
@@ -189,6 +195,30 @@ def main(
 
         test_accuracy = accuracy_score(y_test, test_predictions)        #accuracy via sklearn
         train_accuracy = accuracy_score(y_train, train_predictions)
+
+        test_cm = confusion_matrix(y_test, test_predictions)
+        train_cm = confusion_matrix(y_train, train_predictions)
+
+        print(f"Test Confusion Matrix:\n{test_cm}")                   #print confusion matrices
+        print(f"Train Confusion Matrix:\n{train_cm}")
+
+        # result = permutation_importance(
+        #     model,
+        #     X_test,
+        #     y_test,
+        #     n_repeats=10,
+        #     random_state=42,
+        #     scoring="roc_auc" if nr_classes > 2 else "roc_auc_ovr"
+        # )
+        # importances = result.importances_mean
+
+        # indices = np.argsort(importances)[::-1]
+        # feature_names = X_test.columns
+
+        # print("\nPermutation Importance (Top 20):")
+        # for i in indices[:20]:
+        #     print(feature_names[i], importances[i])
+
 
         if not args.disable_wandb:                                      #logging en wandb
             wandb.run.summary["Test:accuracy"] = test_accuracy
