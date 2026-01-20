@@ -78,7 +78,7 @@ def hpo_main(args):
             seed=args.seed,
             encode_categorical=True,
             hpo_tuning=args.hpo_tuning,
-            n_clusters = 3
+            n_clusters = 1
         )
         dataset_name = os.path.splitext(
             os.path.basename(args.dataset_path)
@@ -128,6 +128,47 @@ def hpo_main(args):
             if args.hpo_tuning:
                 X_valid = cluster_info["X_valid"]
                 y_valid = cluster_info["y_valid"]
+
+            # Cluster Informationen extra speichern in cluster_info
+            n_train = len(X_train)
+            n_test = len(X_test)
+            n_valid = len(X_valid) if args.hpo_tuning else 0
+            n_total = n_train + n_test + n_valid
+
+            # Labelverteilung
+            train_label_dist = pd.Series(y_train).value_counts().to_dict()
+            test_label_dist = pd.Series(y_test).value_counts().to_dict()
+            valid_label_dist = pd.Series(y_valid).value_counts().to_dict() if args.hpo_tuning else {}
+
+            cluster_stats = {
+                "cluster_id": cid,
+                "n_total": int(n_total),
+                "n_train": int(n_train),
+                "n_valid": int(n_valid),
+                "n_test": int(n_test),
+                "label_distribution_train": train_label_dist,
+                "label_distribution_valid": valid_label_dist,
+                "label_distribution_test": test_label_dist,
+            }
+
+            with open(os.path.join(cluster_out_dir, "cluster_info.json"), "w") as f:
+                json.dump(cluster_stats, f, indent=2)
+
+            # Cluster Train Daten abspeichern
+            train_df = X_train.copy()
+            train_df[args.target_column] = y_train
+            train_df.to_csv(
+                os.path.join(cluster_out_dir, "train_data.csv"),
+                index=False
+            )
+
+            # Cluster Test Daten abspeichern
+            test_df = X_test.copy()
+            test_df[args.target_column] = y_test
+            test_df.to_csv(
+                os.path.join(cluster_out_dir, "test_data.csv"),
+                index=False
+            )
 
             best_params = None
             if args.hpo_tuning:
@@ -202,7 +243,7 @@ def hpo_main(args):
                 categorical_indicator,
                 attribute_names,
                 dataset_name,
-                output_directory=cluster_out_dir, # Model.pt richtig im Ordner speichern
+                cluster_out_dir, # Model.pt richtig im Ordner speichern
             )
 
             # Plot erzeugen
@@ -210,6 +251,82 @@ def hpo_main(args):
 
             with open(os.path.join(cluster_out_dir, 'output_info.json'), 'w') as f:
                 json.dump(output_info, f, indent=2)
+
+        # Cluster vergleichbar machen mit einem einzelnen Modell
+        rows = []
+
+        for cid in info["clusters"].keys():
+            cdir = os.path.join(run_out_dir, f"cluster_{cid}")
+
+            out_path = os.path.join(cdir, "output_info.json")
+            info_path = os.path.join(cdir, "cluster_info.json")
+
+            if not (os.path.exists(out_path) and os.path.exists(info_path)):
+                print(f"Skipping cluster {cid}: missing output_info.json or cluster_info.json")
+                continue
+
+            with open(out_path, "r") as f:
+                out = json.load(f)
+            with open(info_path, "r") as f:
+                cinfo = json.load(f)
+
+            n_test = int(cinfo.get("n_test", 0))
+
+            rows.append({
+                "cluster_id": int(cid),
+                "n_total": int(cinfo.get("n_total", 0)),
+                "n_train": int(cinfo.get("n_train", 0)),
+                "n_valid": int(cinfo.get("n_valid", 0)),
+                "n_test": n_test,
+                "test_accuracy": out.get("test_accuracy", None),
+                "test_auroc": out.get("test_auroc", None),
+                "train_time": out.get("train_time", None),
+                "inference_time": out.get("inference_time", None),
+                "test_balanced_accuracy": out.get("test_balanced_accuracy", None),
+                "test_precision": out.get("test_precision", None),
+                "test_recall": out.get("test_recall", None),
+                "test_f1": out.get("test_f1", None),
+            })
+
+        df = pd.DataFrame(rows)
+        df.to_csv(os.path.join(run_out_dir, "cluster_overview.csv"), index=False)
+
+        combined = {
+            "n_clusters": int(info.get("n_clusters", len(df))),
+            "total_test_samples": int(df["n_test"].sum()) if len(df) > 0 else 0,
+            "weighted_test_accuracy": output_info.get("test_accuracy"),
+            "weighted_test_auroc": output_info.get("test_auroc"),
+            "weighted_train_time": output_info.get("train_time", None),
+            "weighted_inference_time": output_info.get("inference_time", None),
+            "weighted_test_balanced_accuracy": output_info.get("test_balanced_accuracy"),
+            "weighted_test_precision": output_info.get("test_precision"),
+            "weighted_test_recall": output_info.get("test_recall"),
+            "weighted_test_f1": output_info.get("test_f1"),
+        }
+
+        def weighted_mean(col: str) -> float:
+            vals = pd.to_numeric(df[col], errors="coerce")
+            weights = df["n_test"].astype(float)
+            mask = vals.notna() & (weights > 0)
+            if mask.sum() == 0:
+                return float("nan")
+            return float((vals[mask] * weights[mask]).sum() / weights[mask].sum())
+
+        if "test_accuracy" in df.columns:
+            combined["weighted_test_accuracy"] = weighted_mean("test_accuracy")
+        if "test_auroc" in df.columns:
+            combined["weighted_test_auroc"] = weighted_mean("test_auroc")
+        if "train_time" in df.columns:
+            combined["weighted_train_time"] = weighted_mean("train_time")
+        if "inference_time" in df.columns:
+            combined["weighted_inference_time"] = weighted_mean("inference_time")
+
+        with open(os.path.join(run_out_dir, "combined_metrics.json"), "w") as f:
+            json.dump(combined, f, indent=2)
+
+        print("\n=== Combined (weighted) metrics ===")
+        for k, v in combined.items():
+            print(f"{k}: {v}")
 
         return
 
@@ -306,7 +423,24 @@ def hpo_main(args):
         categorical_indicator,
         attribute_names,
         dataset_name,
+        output_directory
     )
+
+    combined = {
+        "n_clusters": 1,
+        "total_test_samples": int(len(X_test)),
+        "weighted_test_accuracy": output_info.get("test_accuracy", None),
+        "weighted_test_auroc": output_info.get("test_auroc", None),
+        "weighted_train_time": output_info.get("train_time", None),
+        "weighted_inference_time": output_info.get("inference_time", None),
+        "weighted_test_balanced_accuracy": output_info.get("test_balanced_accuracy"),
+        "weighted_test_precision": output_info.get("test_precision"),
+        "weighted_test_recall": output_info.get("test_recall"),
+        "weighted_test_f1": output_info.get("test_f1"),
+    }
+
+    with open(os.path.join(output_directory, "combined_metrics.json"), "w") as f:
+        json.dump(combined, f, indent=2)
 
     # Plot erzeugen
     plot_top_features(output_info, output_directory)

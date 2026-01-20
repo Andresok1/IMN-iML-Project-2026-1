@@ -4,7 +4,10 @@ import time
 from typing import Dict
 
 import numpy as np
-from sklearn.metrics import accuracy_score, roc_auc_score, mean_squared_error
+from sklearn.metrics import (
+    accuracy_score, roc_auc_score, mean_squared_error,
+    balanced_accuracy_score, precision_score, recall_score, f1_score
+)
 import torch
 import wandb
 
@@ -197,6 +200,19 @@ def main(
         test_accuracy = accuracy_score(y_test, test_predictions)        #calculo de accuracy
         train_accuracy = accuracy_score(y_train, train_predictions)
 
+        # Weitere sinnvolle Metriken
+        test_bal_acc = balanced_accuracy_score(y_test, test_predictions)
+        train_bal_acc = balanced_accuracy_score(y_train, train_predictions)
+
+        test_precision = precision_score(y_test, test_predictions, zero_division=0)
+        train_precision = precision_score(y_train, train_predictions, zero_division=0)
+
+        test_recall = recall_score(y_test, test_predictions, zero_division=0)
+        train_recall = recall_score(y_train, train_predictions, zero_division=0)
+
+        test_f1 = f1_score(y_test, test_predictions, zero_division=0)
+        train_f1 = f1_score(y_train, train_predictions, zero_division=0)
+
         if not args.disable_wandb:                                      #logging en wandb
             wandb.run.summary["Test:accuracy"] = test_accuracy
             wandb.run.summary["Test:auroc"] = test_auroc
@@ -218,6 +234,16 @@ def main(
             'train_time': train_time,
             'inference_time': inference_time,
         }
+        output_info.update({
+            "train_balanced_accuracy": train_bal_acc,
+            "test_balanced_accuracy": test_bal_acc,
+            "train_precision": train_precision,
+            "test_precision": test_precision,
+            "train_recall": train_recall,
+            "test_recall": test_recall,
+            "train_f1": train_f1,
+            "test_f1": test_f1,
+        })
     else:
         output_info = {
             'train_mse': train_mse,
