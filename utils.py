@@ -15,7 +15,7 @@ from sklearn.preprocessing import (
 )
 import torch
 import torch.nn as nn
-from tools import gower_hierarchical_clustering
+from tools import gower_hierarchical_clustering,pca_mixed_data_visualization_2d,pca_mixed_data_visualization_3d
 from get_tab_data import get_dataset_table
 from pathlib import Path
 
@@ -586,24 +586,20 @@ def get_dataset(
         
         categorical_indicator = [col in categorical_cols for col in X.columns]                  #which columns are categorical
 
-        # print("Categorical columns:", categorical_cols)
-        # print("Numerical columns:", numerical_cols)
-
         dataset_name = csv_path.stem
 
         if create_clusters:
-            # Gower 
+            # Gower
+
             clusters, D= gower_hierarchical_clustering(X, y, categorical_cols, numerical_cols, plot_dendrogram=False)
 
-            X_cluster_1, y_cluster_1 = clusters[1]
-            X_cluster_2, y_cluster_2 = clusters[2]
-
-            # print(f"Cluster 1 size: {len(X_cluster_1)}")
-            # print(f"Cluster 2 size: {len(X_cluster_2)}")
         else:
             clusters= {1: (X, y)}
 
+        clusters = {i+1: v for i, v in enumerate(clusters.values())}
 
+        # pca_mixed_data_visualization_2d(clusters,categorical_cols,numerical_cols, visualization=True)
+        pca_mixed_data_visualization_3d(clusters,categorical_cols,numerical_cols, visualization=True)
     else:
         dataset = openml.datasets.get_dataset(dataset_id, download_data=False)             
 
@@ -617,7 +613,7 @@ def get_dataset(
     
     for i in range(1, len(clusters) + 1):
         X_cluster, y_cluster = clusters[i]
-
+        
         info_dict = preprocess_dataset(
             X_cluster,
             y_cluster,
@@ -629,10 +625,13 @@ def get_dataset(
             encoding_type=encoding_type,
             hpo_tuning=hpo_tuning,
         )
-        info_dict['dataset_name'] = dataset_name
+
+        cluster_len= len(X_cluster)
+        info_dict['cluster_len'] = cluster_len
+        
+        info_dict['dataset_name'] = f"Cluster{i}"
         info_cluster[i]= info_dict
 
-    # print("info cluster:", info_cluster)
 
     return info_cluster
 
