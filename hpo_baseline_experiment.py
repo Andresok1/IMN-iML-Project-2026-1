@@ -88,7 +88,6 @@ def hpo_main(args):
         seed=args.seed,
         encode_categorical=ENCODE_CATEGORICAL_VARIABLES[args.model_name],
         hpo_tuning=args.hpo_tuning,
-
     )
 
     dataset_name = info['dataset_name']
