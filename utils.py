@@ -15,7 +15,7 @@ from sklearn.preprocessing import (
 )
 import torch
 import torch.nn as nn
-from tools import gower_hierarchical_clustering,pca_mixed_data_visualization_2d,pca_mixed_data_visualization_3d
+from tools import gower_hierarchical_clustering, pca_mixed_data_visualization
 from get_tab_data import get_dataset_table
 from pathlib import Path
 
@@ -598,8 +598,7 @@ def get_dataset(
 
         clusters = {i+1: v for i, v in enumerate(clusters.values())}
 
-        # pca_mixed_data_visualization_2d(clusters,categorical_cols,numerical_cols, visualization=True)
-        pca_mixed_data_visualization_3d(clusters,categorical_cols,numerical_cols, visualization=True)
+        pca_mixed_data_visualization(clusters,categorical_cols,numerical_cols, visualization=True, dim=3)
     else:
         dataset = openml.datasets.get_dataset(dataset_id, download_data=False)             
 
