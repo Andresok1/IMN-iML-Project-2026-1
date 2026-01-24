@@ -11,6 +11,8 @@ import torch
 import wandb
 
 from models.model import Classifier
+from sklearn.metrics import balanced_accuracy_score 
+from sklearn.metrics import f1_score
 
 
 def main(
@@ -23,7 +25,8 @@ def main(
     categorical_indicator: np.ndarray,
     attribute_names: np.ndarray,
     dataset_name: str,
-    output_directory: str
+    output_directory: str,
+    cluster_len: float,
 ) -> Dict:
     """Main entry point for the experiment.
 
@@ -196,28 +199,10 @@ def main(
         test_accuracy = accuracy_score(y_test, test_predictions)        #accuracy via sklearn
         train_accuracy = accuracy_score(y_train, train_predictions)
 
-        test_cm = confusion_matrix(y_test, test_predictions)
-        train_cm = confusion_matrix(y_train, train_predictions)
-
-        print(f"Test Confusion Matrix:\n{test_cm}")                   #print confusion matrices
-        print(f"Train Confusion Matrix:\n{train_cm}")
-
-        # result = permutation_importance(
-        #     model,
-        #     X_test,
-        #     y_test,
-        #     n_repeats=10,
-        #     random_state=42,
-        #     scoring="roc_auc" if nr_classes > 2 else "roc_auc_ovr"
-        # )
-        # importances = result.importances_mean
-
-        # indices = np.argsort(importances)[::-1]
-        # feature_names = X_test.columns
-
-        # print("\nPermutation Importance (Top 20):")
-        # for i in indices[:20]:
-        #     print(feature_names[i], importances[i])
+        test_balance_accuracy = balanced_accuracy_score(y_test,test_predictions)
+        train_balance_accuracy = balanced_accuracy_score(y_train,train_predictions)
+        
+        test_f1 = f1_score(y_test, test_predictions)
 
 
         if not args.disable_wandb:                                      #logging en wandb
@@ -232,14 +217,19 @@ def main(
             wandb.run.summary["Test:mse"] = test_mse
             wandb.run.summary["Train:mse"] = train_mse
 
-    if args.mode == 'classification':                           #prepara el output info en diccionario
+    if args.mode == 'classification':
         output_info = {
+            'dataset_name': dataset_name,
             'train_auroc': train_auroc,
             'train_accuracy': train_accuracy,
+            'train_balance_accuracy':train_balance_accuracy,
             'test_auroc': test_auroc,
             'test_accuracy': test_accuracy,
+            'test_balance_accuracy': test_balance_accuracy,
+            'test_f1' : test_f1,
             'train_time': train_time,
             'inference_time': inference_time,
+            'cluster_len': cluster_len,
         }
     else:
         output_info = {
