@@ -7,14 +7,15 @@ import numpy as np
 import optuna
 import pandas as pd
 
-from main_experiment import main    #entrena y valua el modelo?
-from search_spaces import hpo_space_imn, hpo_space_tabresnet        #espacio de busqueda de hiperparametros?
-from utils import get_dataset    #carga y preprocesa los datos (dataset)
+from main_experiment import main    
+from search_spaces import hpo_space_imn, hpo_space_tabresnet        
+from utils import get_dataset
+from tools import update_summary, global_json_calculation
 
 
 def objective(
     trial: optuna.trial.Trial,
-    args: argparse.Namespace,   #que Space de hyperparametros usar
+    args: argparse.Namespace,
     X_train: np.ndarray,
     y_train: np.ndarray,
     X_valid: np.ndarray,
@@ -22,7 +23,8 @@ def objective(
     categorical_indicator: np.ndarray,
     attribute_names: np.ndarray,
     dataset_name: str,
-    output_directory: str, 
+    output_directory: str,
+    cluster_len: float, 
 ) -> float:
     """The objective function for hyperparameter optimization.
 
@@ -43,9 +45,9 @@ def objective(
     """
 
     if args.interpretable:
-        hp_config = hpo_space_imn(trial)    #modelo interpretable
+        hp_config = hpo_space_imn(trial)    
     else:
-        hp_config = hpo_space_tabresnet(trial)  #modelo no interpretable
+        hp_config = hpo_space_tabresnet(trial)  
 
     output_info = main(
         args,
@@ -58,6 +60,7 @@ def objective(
         attribute_names,
         dataset_name,
         output_directory,
+        cluster_len,
     )
 
     return output_info['test_auroc']
@@ -87,6 +90,8 @@ def hpo_main(args):
 
         y_train = info['y_train']
         y_test = info['y_test']
+
+        cluster_len = info['cluster_len']
 
         if args.hpo_tuning:
             X_valid = info['X_valid']
@@ -164,6 +169,7 @@ def hpo_main(args):
                         attribute_names,
                         dataset_name,
                         output_directory,
+                        cluster_len,
                     ),
                     n_trials=args.n_trials,
                     timeout=time_limit,
@@ -190,10 +196,22 @@ def hpo_main(args):
             attribute_names,
             dataset_name,
             output_directory,
+            cluster_len,
         )
+
+        parent_dir = os.path.dirname(output_directory)
+        summary_path = os.path.join(parent_dir, 'summary.json')
+        
+        update_summary(summary_path, output_info)
 
         with open(os.path.join(output_directory, 'output_info.json'), 'w') as f:
             json.dump(output_info, f)
+
+    return summary_path
+
+
+            
+        
 
 
 if __name__ == "__main__":
@@ -296,4 +314,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    hpo_main(args)
+    summary_path= hpo_main(args)
+    
+    # if args.create_clusters:
+    global_json_calculation(summary_path)
