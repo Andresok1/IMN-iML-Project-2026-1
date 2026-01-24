@@ -155,7 +155,12 @@ class Classifier:
             if self.nr_classes > 2:
                 criterion = torch.nn.CrossEntropyLoss()
             else:
-                criterion = torch.nn.BCEWithLogitsLoss()
+                n_pos = (y_train == 1).sum().float()
+                n_neg = (y_train == 0).sum().float()
+
+                pos_weight = torch.tensor([float(n_neg / n_pos)])
+                criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+                # criterion = torch.nn.BCEWithLogitsLoss()
         else:
             criterion = torch.nn.MSELoss()
 
