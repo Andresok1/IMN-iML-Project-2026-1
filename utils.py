@@ -16,7 +16,6 @@ from sklearn.preprocessing import (
 import torch
 import torch.nn as nn
 from tools import gower_hierarchical_clustering, pca_mixed_data_visualization
-from get_tab_data import get_dataset_table
 from pathlib import Path
 
 def prepare_data_for_cutmix(
@@ -542,6 +541,7 @@ def get_dataset(
     encoding_type: str = 'ordinal',
     hpo_tuning: bool = False,
     create_clusters: bool = False,
+    visualization: bool = False
 ) -> Dict:
     """Get/Preprocess the dataset.
 
@@ -598,7 +598,7 @@ def get_dataset(
 
         clusters = {i+1: v for i, v in enumerate(clusters.values())}
 
-        pca_mixed_data_visualization(clusters,categorical_cols,numerical_cols, visualization=True, dim=3)
+        pca_mixed_data_visualization(clusters,categorical_cols,numerical_cols, visualization=visualization, dim=3)
     else:
         dataset = openml.datasets.get_dataset(dataset_id, download_data=False)             
 
