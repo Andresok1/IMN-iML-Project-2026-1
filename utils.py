@@ -15,6 +15,7 @@ from sklearn.preprocessing import (
     OneHotEncoder,
     TargetEncoder,
 )
+
 import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
@@ -593,6 +594,7 @@ def get_dataset_from_csv(
     if 'customerID' in X.columns:
         X = X.drop(columns=['customerID'])
 
+
     #Fix für Error
     #ValueError: Expected more than 1 value per channel when training, got input size torch.Size([1, 128])
     min_samples_per_class = 2
@@ -825,3 +827,4 @@ def plot_clusters_pca(
 
     plt.savefig(os.path.join(out_dir, filename))
     plt.close()
+

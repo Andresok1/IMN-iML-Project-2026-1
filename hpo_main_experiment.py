@@ -407,7 +407,7 @@ def hpo_main(args):
 
         best_params = study.best_params
         trial_df = study.trials_dataframe(attrs=('number', 'value', 'params', 'state'))
-        trial_df.to_csv(os.path.join(output_directory, 'trials.csv'), index=False)
+        trial_df.to_csv(os.path.join(run_out_dir, 'trials.csv'), index=False)
 
     # concatenate train and validation
     X_train = pd.concat([X_train, X_valid], axis=0)
@@ -423,7 +423,7 @@ def hpo_main(args):
         categorical_indicator,
         attribute_names,
         dataset_name,
-        output_directory
+        run_out_dir
     )
 
     combined = {
@@ -439,13 +439,13 @@ def hpo_main(args):
         "weighted_test_f1": output_info.get("test_f1"),
     }
 
-    with open(os.path.join(output_directory, "combined_metrics.json"), "w") as f:
+    with open(os.path.join(run_out_dir, "combined_metrics.json"), "w") as f:
         json.dump(combined, f, indent=2)
 
     # Plot erzeugen
-    plot_top_features(output_info, output_directory)
+    plot_top_features(output_info, run_out_dir)
 
-    with open(os.path.join(output_directory, 'output_info.json'), 'w') as f:
+    with open(os.path.join(run_out_dir, 'output_info.json'), 'w') as f:
         json.dump(output_info, f)
 
 

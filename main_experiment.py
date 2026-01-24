@@ -13,7 +13,6 @@ import wandb
 
 from models.model import Classifier
 
-
 def main(
     args: argparse.Namespace,
     hp_config: Dict,
