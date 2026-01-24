@@ -314,7 +314,7 @@ class Classifier:
         predictions = []
         weights = []
 
-        for snapshot_idx, snapshot in enumerate(self.ensemble_snapshots):                   #?
+        for snapshot_idx, snapshot in enumerate(self.ensemble_snapshots):                   
             self.model.load_state_dict(snapshot)
             self.model.eval()
 
