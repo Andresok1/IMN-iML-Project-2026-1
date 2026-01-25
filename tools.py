@@ -339,43 +339,85 @@ def update_summary(path, new_entry):
         json.dump(summary, f, indent=4)
 
 
-def global_json_calculation(path):
+def global_json_calculation(path, feature_list):
 
     with open(path, "r") as f:
         results = json.load(f)
 
     total_samples = 0
-    weighted_accuracy = 0.0
-    weighted_bal_acc = 0.0
-    weighted_f1 = 0.0
+    
+    weighted_train_auroc = 0.0
+    weighted_train_accuracy = 0.0
+    weighted_train_bal_acc = 0.0
+    weighted_test_auroc = 0.0
+    weighted_test_accuracy = 0.0
+    weighted_test_bal_acc = 0.0
+    weighted_test_f1 = 0.0
+    weighted_train_time = 0.0
     weighted_inference_time = 0.0
+
+    feature_ranking = {}
+    feature_ranking = {feature: 0 for feature in feature_list}
+
 
     for data in results:
 
         n = data["cluster_len"]
 
-        weighted_accuracy += data["test_auroc"] * n
-        weighted_accuracy += data["test_accuracy"] * n
-        weighted_bal_acc += data["test_balance_accuracy"] * n
-        weighted_f1 += data["test_f1"] * n
+        weighted_train_auroc += data["train_auroc"] * n
+        weighted_train_accuracy += data["train_accuracy"] * n
+        weighted_train_bal_acc += data["train_balance_accuracy"] * n
+
+
+        weighted_test_auroc += data["test_auroc"] * n
+        weighted_test_accuracy += data["test_accuracy"] * n
+        weighted_test_bal_acc += data["test_balance_accuracy"] * n
+        weighted_test_f1 += data["test_f1"] * n
+
+        weighted_train_time += data["train_time"]
         weighted_inference_time += data["inference_time"]
 
         total_samples += n
 
-    weighted_accuracy /= total_samples
-    weighted_bal_acc /= total_samples
-    weighted_f1 /= total_samples
+        top_features = data["top_features"]
+        top_features_weights = data["top_features_weights"]
+
+        for feature, weight in zip(top_features, top_features_weights):
+            feature_ranking[feature] += weight * n
+
+
+    weighted_train_auroc /= total_samples
+    weighted_train_accuracy /= total_samples
+    weighted_train_bal_acc /= total_samples
+
+    weighted_test_auroc /= total_samples
+    weighted_test_accuracy /= total_samples
+    weighted_test_bal_acc /= total_samples
+    weighted_test_f1 /= total_samples
+
+    for feature in feature_ranking:
+        feature_ranking[feature] /= total_samples
+
+    feature_ranking = dict(sorted(feature_ranking.items(), key=lambda x: x[1], reverse=True))
 
     global_metrics = {
-        "test_accuracy": weighted_accuracy,
-        "balanced_accuracy": weighted_bal_acc,
-        "f1": weighted_f1,
-        "dataset_size": total_samples,
+        "train_auroc" : weighted_train_auroc,
+        "train_accuracy": weighted_train_accuracy,
+        "train_balance_accuracy": weighted_train_bal_acc,
+        "test_auroc": weighted_test_auroc,
+        "test_accuracy": weighted_test_accuracy,
+        "test_balanced_accuracy": weighted_test_bal_acc,
+        "test_f1": weighted_test_f1,
+        "train_time": weighted_train_time,
         "inference_time": weighted_inference_time,
+        "total_dataset_size": total_samples,
     }
-
+    
 
     results.append({"cluster_global": global_metrics})
     
+    results.append({"cluster_global_ranking": feature_ranking})
+
+
     with open(path, "w") as f:
         json.dump(results, f, indent=2)
