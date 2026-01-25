@@ -157,7 +157,6 @@ def main(
 
         #print("weights.size:", weight_importances.size())
 
-        # print("weights.size():", weight_importances.size())
     else:
         test_predictions = model.predict(X_test, y_test)
 
