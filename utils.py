@@ -632,7 +632,7 @@ def get_dataset(
         info_cluster[i]= info_dict
 
 
-    return info_cluster
+    return info_cluster, attribute_names
 
 
 class BasicBlock(nn.Module):
