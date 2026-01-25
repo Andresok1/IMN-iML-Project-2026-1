@@ -12,7 +12,8 @@
                     "--n_trials", "1",
                     "--disable_wandb",
                     "--interpretable",
-                    "--dataset_id", "0"
+                    "--dataset_id", "0",
+                    "--create_clusters",
                 ]
         }
     ]
