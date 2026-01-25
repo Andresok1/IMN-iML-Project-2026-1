@@ -155,7 +155,7 @@ def main(
     if interpretable:
         test_predictions, weight_importances = model.predict(X_test, y_test, return_weights=True)           #weights for feature importance per cluster
 
-        # print("weights.shape:", weight_importances.shape)
+        #print("weights.size:", weight_importances.size())
 
         # print("weights.size():", weight_importances.size())
     else:
