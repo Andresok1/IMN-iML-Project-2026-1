@@ -69,13 +69,14 @@ def objective(
 def hpo_main(args):
     """The main function for hyperparameter optimization."""
 
-    info_cluster = get_dataset(
+    info_cluster, feature_list = get_dataset(
         args.dataset_id,
         test_split_size=args.test_split_size,
         seed=args.seed,
         encode_categorical=True,
         hpo_tuning=args.hpo_tuning,
         create_clusters=args.create_clusters,
+        visualization= args.visualization
     )
 
     timestamp_exists= False
@@ -84,6 +85,7 @@ def hpo_main(args):
 
         dataset_name = info['dataset_name']
         attribute_names = info['attribute_names']
+        #print(attribute_names)
 
         X_train = info['X_train']
         X_test = info['X_test']
@@ -207,7 +209,7 @@ def hpo_main(args):
         with open(os.path.join(output_directory, 'output_info.json'), 'w') as f:
             json.dump(output_info, f)
 
-    return summary_path
+    return summary_path, feature_list
 
 
             
@@ -311,10 +313,14 @@ if __name__ == "__main__":
         action='store_true',
         help='Whether to create clusters in the dataset',
     )
-
+    parser.add_argument(
+        '--visualization',
+        action='store_true',
+        help='Whether to create clusters in the dataset',
+    )
     args = parser.parse_args()
 
-    summary_path= hpo_main(args)
+    summary_path, feature_list = hpo_main(args)
     
-    # if args.create_clusters:
-    global_json_calculation(summary_path)
+    if args.create_clusters:
+        global_json_calculation(summary_path, feature_list)
