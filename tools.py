@@ -19,13 +19,15 @@ from mpl_toolkits.mplot3d import Axes3D
 
 
 
-def gower_hierarchical_clustering(X, y, categorical_cols, numerical_cols, plot_dendrogram=False, initial_cluster_len=None, clusters=None):
+def gower_hierarchical_clustering(X, y, categorical_cols, numerical_cols, plot_dendrogram=False, initial_cluster_len=None, clusters=None, one_more_division =True, offset=0):
 
     if initial_cluster_len is None:
         initial_cluster_len = len(X)
 
+
     if clusters is None:
         clusters = {}
+
 
     X_gower = X.copy()
     for col in numerical_cols:
@@ -51,93 +53,105 @@ def gower_hierarchical_clustering(X, y, categorical_cols, numerical_cols, plot_d
         cluster_labels = fcluster(Z, t=best_k, criterion='maxclust')
 
         print(f"Cluster divided into: {best_k}", "clusters")
-        # print(f"Cluster labels size: {len(cluster_labels)}")
         
-        check_size = True
-        total_cluster_size = len(X)
+        sub_cluster_len = len(X)
 
-        for i in range(1, best_k + 1):
-            X_cluster = X[cluster_labels == i]
-            y_cluster = y[cluster_labels == i]
-            print(f"Cluster {i} size: {len(X_cluster)}")
+        cluster_sizes = {
+            i: len(X[cluster_labels == i])
+            for i in range(1, best_k + 1)
+        }
+        print(f"from {sub_cluster_len}, divided into:{cluster_sizes}")
 
+        cluster_ratios = {
+            i: size / initial_cluster_len
+            for i, size in cluster_sizes.items()
+        }
 
-            min_cluster_size = len(X_cluster)/initial_cluster_len
+        big_clusters = [i for i, r in cluster_ratios.items() if r > 0.5]
+        small_clusters = [i for i, r in cluster_ratios.items() if r < 0.10]
+        normal_clusters = [
+            i for i in cluster_ratios
+            if i not in big_clusters and i not in small_clusters
+        ]
 
+        print(f"considered as big: {big_clusters}")
+        print(f"considered as normal: {normal_clusters}")
+        print(f"considered as small: {small_clusters}")
 
-            if min_cluster_size < 0.2 :          #No cluster should be smaller than 20% of the initial dataset size
-                check_size = False
-                print("Small cluster was found in:", {len(X_cluster)})
-                print("Stopping further division.")
-                break
+        from sklearn.preprocessing import LabelEncoder
+        centroids = {}
+
+        encoder = LabelEncoder()
+        X_encoded = X.apply(encoder.fit_transform)
+
+        for i in normal_clusters + small_clusters:
+            c_small = X_encoded[cluster_labels == i].mean(axis=0)
+            centroids[i] = c_small
+
+        for i in normal_clusters:
+            X_sub = X[cluster_labels == i]
+            y_sub = y[cluster_labels == i]
+
+            clusters[i+offset] = [X_sub, y_sub]
+            print(f"cluster inserted {len(X_sub)}")
+            show_clusters(clusters)
+        
+        
+        for i in small_clusters:
+            c_small = centroids[i]  
+
+            if normal_clusters:
+                print("estoy intentando juntar el puto:",small_clusters)
+                # try:
+                closest_normal = min(
+                    normal_clusters,
+                    key=lambda j: np.linalg.norm(c_small - centroids[j])
+                )
+
+                mask = cluster_labels == i
+
+                X_small = X.loc[mask]  
+                y_small = y.loc[mask]  
+
+                clusters[closest_normal+offset][0] = pd.concat(
+                    [clusters[closest_normal+offset][0], X_small],
+                    axis=0
+                )
+
+                clusters[closest_normal+offset][1] = pd.concat(
+                    [clusters[closest_normal+offset][1], y_small],
+                    axis=0
+                )
+                print(f"cluster inserted {len(X_small)}")
+                show_clusters(clusters)
+
+            else:
+
+                X_sub = X[cluster_labels == i]
+                y_sub = y[cluster_labels == i]
+                clusters[i+offset] = [X_sub, y_sub]
+
+                print(f"cluster inserted {len(X_sub)}")
+                show_clusters(clusters)
 
         print("----------------------------")
 
-        if check_size:
-            for i in range(1, best_k + 1):
-                
-                X_cluster = X[cluster_labels == i]
-                y_cluster = y[cluster_labels == i]
+        for i in big_clusters:
+            X_big = X[cluster_labels == i]
+            y_big = y[cluster_labels == i]
 
-                # If the cluster is large enough, recursively split it
+            next_offset = len(X_big)
 
-                print("Dividing cluster:", i, "with size:", len(X_cluster))
-                sub_clusters, _ = gower_hierarchical_clustering(X_cluster, y_cluster, categorical_cols, numerical_cols, plot_dendrogram=False, initial_cluster_len=initial_cluster_len, clusters=clusters)
-
-        else:
-
-            
-            len1 =len(X[cluster_labels == 1])
-            len2 =len(X[cluster_labels == 2])
-
-            minimum = min(len1,len2)
-
-            print("len1:", len1, "len2:", len2)
-            #check which is the big cluster
-
-            if len1/initial_cluster_len > 0.5 or len2/initial_cluster_len > 0.5:        #No cluster should be bigger than 50% of the initial dataset size
-                print("one dataframes assigned to clusters")
-
-                if len1/initial_cluster_len > 0.5:
-                    big_cluster_x =X[cluster_labels == 1]
-                    big_cluster_y =y[cluster_labels == 1]
-                    
-                    print("clusters before:", len(clusters))
-                    clusters[len(clusters) + 1] = (X[cluster_labels == 2], y[cluster_labels == 2])
-                    print("clusters after:", len(clusters))
-
-                elif len2/initial_cluster_len > 0.5:
-                    big_cluster_x =X[cluster_labels == 2]
-                    big_cluster_y =y[cluster_labels == 2]
-                    
-                    print("clusters before:", len(clusters))
-                    clusters[len(clusters) + 1] = (X[cluster_labels == 1], y[cluster_labels == 1])
-                    print("clusters after:", len(clusters))
-
-                if big_cluster_x is not None:
-                    sub_clusters, _ = gower_hierarchical_clustering(big_cluster_x, big_cluster_y, categorical_cols, numerical_cols, plot_dendrogram=False, initial_cluster_len=initial_cluster_len, clusters=clusters)
-            else:   
-
-                print("both dataframes assigned to clusters")
-                print("clusters before:", len(clusters))
-
-
-                total = len1 + len2
-                ratio = minimum/total
-
-                if ratio < 0.1:
-                    mask = (cluster_labels == 1) | (cluster_labels == 2)
-                    print("Note: Merging clusters because too small")
-                    X_merged = X[mask]
-                    y_merged = y[mask]
-                    print("merged cluster size:", len(X_merged))
-                    clusters[len(clusters) + 1] = (X_merged, y_merged)
-                else: 
-                    for i in range(1, best_k + 1):
-                        X_sub = X[cluster_labels == i]
-                        y_sub = y[cluster_labels == i]
-                        clusters[len(clusters) + 1] = (X_sub, y_sub)
-                print("clusters after:", len(clusters))
+            sub_clusters, _ = gower_hierarchical_clustering(
+                X_big,
+                y_big,
+                categorical_cols,
+                numerical_cols,
+                plot_dendrogram=False,
+                initial_cluster_len=initial_cluster_len,
+                clusters=clusters, 
+                offset= next_offset
+            )
 
     else:
         clusters[1] = (X, y)
@@ -201,6 +215,7 @@ def pca_mixed_data_visualization(clusters, categorical_cols, numerical_cols, vis
         cluster_ids.extend([i] * len(X_cluster))
 
     X_all = pd.concat(X_all, axis=0)
+
     cluster_ids = np.array(cluster_ids)
 
     X_all_proc = preprocess.fit_transform(X_all)
@@ -421,3 +436,10 @@ def global_json_calculation(path, feature_list):
 
     with open(path, "w") as f:
         json.dump(results, f, indent=2)
+
+
+
+def show_clusters(clusters):
+    for i, (X_data, y_data) in clusters.items():
+        cluster_size = len(X_data)  # El tamaño del cluster es el número de filas en X_data
+        print(f"Cluster size {i}: {cluster_size}")
