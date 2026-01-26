@@ -599,6 +599,49 @@ def get_dataset(
         clusters = {i+1: v for i, v in enumerate(clusters.values())}
 
         pca_mixed_data_visualization(clusters,categorical_cols,numerical_cols, visualization=visualization, dim=3)
+
+    elif dataset_id ==1:
+        
+        BASE_DIR = Path(__file__).resolve().parent
+        DATASETS_DIR = BASE_DIR / "datasets"
+        csv_path = DATASETS_DIR / "spam_detection_dataset.csv"
+
+        dataset = pd.read_csv(csv_path)
+        X = dataset.loc[:, dataset.columns != "is_spam"].copy()
+        y = dataset["is_spam"].astype(int)
+
+        numerical_cols = [
+            "num_links",
+            "num_words",
+            "sender_score"
+        ]
+
+        for col in numerical_cols:
+            X[col] = pd.to_numeric(X[col], errors="coerce")
+
+        X = X.dropna(subset=numerical_cols)
+
+        y = y.loc[X.index]
+
+        categorical_cols = [col for col in X.columns if col not in numerical_cols]
+        
+        categorical_indicator = [col in categorical_cols for col in X.columns]                  #which columns are categorical
+        
+        attribute_names = X.columns.tolist()                                                #feature names
+
+        dataset_name = csv_path.stem
+
+        if create_clusters:
+            # Gower
+
+            clusters, D= gower_hierarchical_clustering(X, y, categorical_cols, numerical_cols, plot_dendrogram=False)
+
+        else:
+            clusters= {1: (X, y)}
+
+        clusters = {i+1: v for i, v in enumerate(clusters.values())}
+
+        pca_mixed_data_visualization(clusters,categorical_cols,numerical_cols, visualization=visualization, dim=3)
     else:
         dataset = openml.datasets.get_dataset(dataset_id, download_data=False)             
 
