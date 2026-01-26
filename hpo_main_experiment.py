@@ -78,7 +78,7 @@ def hpo_main(args):
             seed=args.seed,
             encode_categorical=True,
             hpo_tuning=args.hpo_tuning,
-            n_clusters = 1
+            n_clusters = 2
         )
         dataset_name = os.path.splitext(
             os.path.basename(args.dataset_path)
@@ -286,6 +286,8 @@ def hpo_main(args):
                 "test_precision": out.get("test_precision", None),
                 "test_recall": out.get("test_recall", None),
                 "test_f1": out.get("test_f1", None),
+                "top_features": out.get("top_features", None),
+                "top_features_weights": out.get("top_features_weights", None),
             })
 
         df = pd.DataFrame(rows)
@@ -312,14 +314,54 @@ def hpo_main(args):
                 return float("nan")
             return float((vals[mask] * weights[mask]).sum() / weights[mask].sum())
 
-        if "test_accuracy" in df.columns:
-            combined["weighted_test_accuracy"] = weighted_mean("test_accuracy")
-        if "test_auroc" in df.columns:
-            combined["weighted_test_auroc"] = weighted_mean("test_auroc")
-        if "train_time" in df.columns:
-            combined["weighted_train_time"] = weighted_mean("train_time")
-        if "inference_time" in df.columns:
-            combined["weighted_inference_time"] = weighted_mean("inference_time")
+        for m in [
+            "test_accuracy",
+            "test_auroc",
+            "train_time",
+            "inference_time",
+            "test_balanced_accuracy",
+            "test_precision",
+            "test_recall",
+            "test_f1",
+        ]:
+            if m in df.columns:
+                combined[f"weighted_{m}"] = weighted_mean(m)
+
+        # Feature weights kombinieren
+        if args.interpretable:
+            combined_feature_weights = {}
+            total_weight = 0.0
+
+            for r in rows:
+                n_test = float(r.get("n_test", 0))
+                feats = r.get("top_features")
+                ws = r.get("top_features_weights")
+
+                if not feats or not ws or n_test <= 0:
+                    continue
+
+                total_weight += n_test
+
+                for f, w in zip(feats, ws):
+                    combined_feature_weights[f] = combined_feature_weights.get(f, 0.0) + float(w) * n_test
+
+            # normalisieren
+            if total_weight > 0 and len(combined_feature_weights) > 0:
+                for f in combined_feature_weights:
+                    combined_feature_weights[f] /= total_weight
+
+                # sortieren nach Größe
+                sorted_items = sorted(
+                    combined_feature_weights.items(),
+                    key=lambda x: abs(x[1]),
+                    reverse=True
+                )
+
+                combined["combined_top_features"] = [k for k, _ in sorted_items]
+                combined["combined_top_features_weights"] = [v for _, v in sorted_items]
+            else:
+                combined["combined_top_features"] = []
+                combined["combined_top_features_weights"] = []
 
         with open(os.path.join(run_out_dir, "combined_metrics.json"), "w") as f:
             json.dump(combined, f, indent=2)
