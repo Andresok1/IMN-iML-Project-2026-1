@@ -9,7 +9,10 @@ import pandas as pd
 from main_experiment import main
 from search_spaces import hpo_space_imn, hpo_space_tabresnet
 from utils import get_dataset, get_dataset_from_csv, get_next_run_id, plot_top_features, plot_clusters_pca
-
+from sklearn.metrics import (
+    roc_auc_score, accuracy_score, balanced_accuracy_score,
+    precision_score, recall_score, f1_score
+)
 
 def objective(
     trial: optuna.trial.Trial,
@@ -327,6 +330,29 @@ def hpo_main(args):
             if m in df.columns:
                 combined[f"weighted_{m}"] = weighted_mean(m)
 
+        # Speichern anpassen für globale Metriken
+        def compute_global_metrics_from_predictions(pred_df: pd.DataFrame) -> dict:
+            y_true = pred_df["y_true"].astype(int).to_numpy()
+            y_pred = pred_df["y_pred"].astype(int).to_numpy()
+            y_prob = pred_df["y_prob"].astype(float).to_numpy()
+
+            out = {
+                "total_test_samples": int(len(pred_df)),
+                "test_accuracy": float(accuracy_score(y_true, y_pred)),
+                "test_balanced_accuracy": float(balanced_accuracy_score(y_true, y_pred)),
+                "test_precision": float(precision_score(y_true, y_pred, zero_division=0)),
+                "test_recall": float(recall_score(y_true, y_pred, zero_division=0)),
+                "test_f1": float(f1_score(y_true, y_pred, zero_division=0)),
+            }
+
+            # AUROC braucht beide Klassen
+            if len(np.unique(y_true)) == 2:
+                out["test_auroc"] = float(roc_auc_score(y_true, y_prob))
+            else:
+                out["test_auroc"] = None
+
+            return out
+
         # Feature weights kombinieren
         if args.interpretable:
             combined_feature_weights = {}
@@ -369,6 +395,37 @@ def hpo_main(args):
         print("\n=== Combined (weighted) metrics ===")
         for k, v in combined.items():
             print(f"{k}: {v}")
+
+        # Globale Metriken
+        all_preds = []
+
+        for cid in info["clusters"].keys():
+            cdir = os.path.join(run_out_dir, f"cluster_{cid}")
+            pred_path = os.path.join(cdir, "predictions.csv")
+            if not os.path.exists(pred_path):
+                print(f"Skipping cluster {cid}: predictions.csv fehlt")
+                continue
+
+            dfp = pd.read_csv(pred_path)
+            dfp["cluster_id"] = int(cid)  # für Analyse
+            all_preds.append(dfp)
+
+        if len(all_preds) > 0:
+            global_pred_df = pd.concat(all_preds, axis=0, ignore_index=True)
+
+            # predictions kombiniert abgespeichert
+            global_pred_df.to_csv(os.path.join(run_out_dir, "global_predictions.csv"), index=False)
+
+            global_metrics = compute_global_metrics_from_predictions(global_pred_df)
+            global_metrics["n_clusters"] = int(info.get("n_clusters", len(all_preds)))
+
+            with open(os.path.join(run_out_dir, "global_metrics.json"), "w") as f:
+                json.dump(global_metrics, f, indent=2)
+
+            #print("\n=== Global metrics (aus global_predictions.csv) ===")
+            #print(json.dumps(global_metrics, indent=2))
+        else:
+            print("Keine predictions.csv gefunden, keine globalen Metriken berechenbar.")
 
         return
 

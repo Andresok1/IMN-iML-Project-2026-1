@@ -4,6 +4,7 @@ import time
 from typing import Dict
 
 import numpy as np
+import pandas as pd
 from sklearn.metrics import (
     accuracy_score, roc_auc_score, mean_squared_error,
     balanced_accuracy_score, precision_score, recall_score, f1_score
@@ -165,8 +166,12 @@ def main(
 
     inference_time = time.time() - start_time - train_time
 
-    test_predictions = test_predictions.cpu().numpy()               #convierte los tensores a numpy
+    test_predictions = test_predictions.cpu().numpy()
     train_predictions = train_predictions.cpu().numpy()
+
+    # Scores sichern
+    test_scores = test_predictions.copy()
+    train_scores = train_predictions.copy()
 
     if interpretable:
         weight_importances = weight_importances.cpu().detach().numpy()
@@ -175,7 +180,7 @@ def main(
     y_test = y_test.tolist()
     y_train = y_train.tolist()
 
-    if args.mode == 'classification':                   #si es clasificacion calcula auroc (para train/test) y accuracy
+    if args.mode == 'classification':
         test_auroc = roc_auc_score(
             y_test,
             test_predictions,
@@ -195,6 +200,27 @@ def main(
         else:
             test_predictions = np.argmax(test_predictions, axis=1)
             train_predictions = np.argmax(train_predictions, axis=1)
+
+        # Speichern anpassen für globale Metriken
+        y_true_test = np.array(y_test, dtype=int)
+
+        if test_scores.ndim > 1:
+            y_prob_test = test_scores.reshape(-1)
+        else:
+            y_prob_test = test_scores
+
+        y_pred_test = np.array(test_predictions, dtype=int)
+
+        pred_df = pd.DataFrame({
+            "y_true": y_true_test,
+            "y_prob": y_prob_test,
+            "y_pred": y_pred_test,
+        })
+
+        pred_df.to_csv(
+            os.path.join(output_dir, "predictions.csv"),
+            index=False,
+        )
 
         test_accuracy = accuracy_score(y_test, test_predictions)        #calculo de accuracy
         train_accuracy = accuracy_score(y_train, train_predictions)
