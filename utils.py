@@ -666,7 +666,7 @@ def get_dataset(
             seed=seed,
             encoding_type=encoding_type,
             hpo_tuning=hpo_tuning,
-        )
+        ) #train, test and valid splitting
 
         cluster_len= len(X_cluster)
         info_dict['cluster_len'] = cluster_len
@@ -675,7 +675,7 @@ def get_dataset(
         info_cluster[i]= info_dict
 
 
-    return info_cluster, attribute_names
+    return info_cluster, attribute_names, categorical_indicator
 
 
 class BasicBlock(nn.Module):
