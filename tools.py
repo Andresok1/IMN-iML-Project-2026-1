@@ -368,6 +368,8 @@ def global_json_calculation(path, feature_list):
     weighted_test_accuracy = 0.0
     weighted_test_bal_acc = 0.0
     weighted_test_f1 = 0.0
+    weighted_test_precision = 0.0
+    weighted_test_recall = 0.0
     weighted_train_time = 0.0
     weighted_inference_time = 0.0
 
@@ -522,7 +524,7 @@ def generate_cluster_feature_plots(summary_path):
     summary_dir = os.path.join(parent_dir)
     os.makedirs(summary_dir, exist_ok=True)
 
-    save_path = os.path.join(summary_dir, "cluster_global_ranking.png")
+    save_path = os.path.join(summary_dir, "cluster_global_ranking_mean.png")
 
     plot_barh(
         features,
