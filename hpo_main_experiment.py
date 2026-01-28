@@ -69,7 +69,7 @@ def objective(
 def hpo_main(args):
     """The main function for hyperparameter optimization."""
 
-    info_cluster, feature_list = get_dataset(
+    info_cluster, feature_list, categorical_indicator = get_dataset(
         args.dataset_id,
         test_split_size=args.test_split_size,
         seed=args.seed,
@@ -80,12 +80,14 @@ def hpo_main(args):
     )
 
     timestamp_exists= False
-    
+
     for cluster_id, info in info_cluster.items():
 
         dataset_name = info['dataset_name']
+
+        print(f"****{dataset_name}*****")
+
         attribute_names = info['attribute_names']
-        #print(attribute_names)
 
         X_train = info['X_train']
         X_test = info['X_test']
@@ -98,6 +100,9 @@ def hpo_main(args):
         if args.hpo_tuning:
             X_valid = info['X_valid']
             y_valid = info['y_valid']
+        else:
+            X_valid, y_valid = None, None
+        
 
         categorical_indicator = info['categorical_indicator']
         model_name = 'inn' if args.interpretable else 'tabresnet'
@@ -105,7 +110,7 @@ def hpo_main(args):
         if not timestamp_exists:
             timestamp = time.strftime("%Y-%m-%d_%H-%M-%S", time.gmtime()) 
             timestamp_exists = True
-            timestamp_saved = timestamp
+            timestamp_saved = timestamp     
 
         if args.create_clusters:
             output_directory = os.path.join(
@@ -113,7 +118,7 @@ def hpo_main(args):
                 model_name,
                 f'dataset_{args.dataset_id}_{timestamp_saved}',
                 f'seed_{args.seed}', 
-                f'clusters_{cluster_id}'
+                f'cluster_{cluster_id}'
             )
         else:
             output_directory = os.path.join(
@@ -121,7 +126,7 @@ def hpo_main(args):
                 model_name,
                 f'dataset_{args.dataset_id}_no_clusters_{timestamp_saved}',
                 f'seed_{args.seed}', 
-                f'clusters_{cluster_id}'
+                f'cluster_{cluster_id}'
             )
 
         os.makedirs(output_directory, exist_ok=True)
