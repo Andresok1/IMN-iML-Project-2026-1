@@ -10,7 +10,7 @@ import pandas as pd
 from main_experiment import main    
 from search_spaces import hpo_space_imn, hpo_space_tabresnet        
 from utils import get_dataset
-from tools import update_summary, global_json_calculation
+from tools import update_summary, global_json_calculation, generate_cluster_feature_plots
 
 
 def objective(
@@ -324,3 +324,7 @@ if __name__ == "__main__":
     
     if args.create_clusters:
         global_json_calculation(summary_path, feature_list)
+
+    generate_cluster_feature_plots(summary_path)
+
+    print(f"All data saved in:{summary_path}")
