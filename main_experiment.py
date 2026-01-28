@@ -6,7 +6,8 @@ from unittest import result
 
 import numpy as np
 from sklearn.inspection import permutation_importance
-from sklearn.metrics import accuracy_score, roc_auc_score, mean_squared_error, confusion_matrix
+from sklearn.metrics import accuracy_score, roc_auc_score, mean_squared_error, confusion_matrix, precision_score, recall_score
+
 import torch
 import wandb
 
@@ -138,7 +139,7 @@ def main(
     args.weight_norm = hp_config['weight_norm'] if 'weight_norm' in hp_config else 0.1
     args.dropout_rate = hp_config['dropout_rate']
 
-    model = Classifier(                                             #model
+    model = Classifier(                                             
         network_configuration,
         args=args,
         categorical_indicator=categorical_indicator,
@@ -149,7 +150,7 @@ def main(
         disable_wandb=args.disable_wandb,
     )
 
-    start_time = time.time()                                            #train
+    start_time = time.time()                                            
     model.fit(X_train, y_train)
     train_time = time.time() - start_time
     if interpretable:
@@ -203,6 +204,9 @@ def main(
         
         test_f1 = f1_score(y_test, test_predictions)
 
+        test_precision = precision_score(y_test, test_predictions)
+        test_recall = recall_score(y_test, test_predictions)
+
 
         if not args.disable_wandb:                                      #logging en wandb
             wandb.run.summary["Test:accuracy"] = test_accuracy
@@ -226,6 +230,8 @@ def main(
             'test_accuracy': test_accuracy,
             'test_balance_accuracy': test_balance_accuracy,
             'test_f1' : test_f1,
+            'test_recall': test_recall,
+            'test_precision' : test_precision,
             'train_time': train_time,
             'inference_time': inference_time,
             'cluster_len': cluster_len,
