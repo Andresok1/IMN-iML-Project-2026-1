@@ -530,6 +530,9 @@ def preprocess_dataset(
         info_dict['X_valid'] = X_valid
         info_dict['y_valid'] = y_valid
 
+    info_dict["column_transformer"] = column_transformer
+
+
     return info_dict
 
 
@@ -652,28 +655,116 @@ def get_dataset(
        )
     
     info_cluster= {}
-    
+    cluster_splits = {}
     for i in range(1, len(clusters) + 1):
         X_cluster, y_cluster = clusters[i]
-        
-        info_dict = preprocess_dataset(
-            X_cluster,
-            y_cluster,
-            encode_categorical,
-            categorical_indicator,
-            attribute_names,
-            test_split_size=test_split_size,
-            seed=seed,
-            encoding_type=encoding_type,
-            hpo_tuning=hpo_tuning,
-        ) #train, test and valid splitting
+        idx = X_cluster.index
 
-        cluster_len= len(X_cluster)
-        info_dict['cluster_len'] = cluster_len
-        
-        info_dict['dataset_name'] = f"Cluster{i}"
-        info_cluster[i]= info_dict
+        train_idx, temp_idx = train_test_split(
+            idx,
+            test_size=test_split_size,
+            random_state=seed,
+            stratify=y.loc[idx],
+        )
 
+        if hpo_tuning:
+            valid_idx, test_idx = train_test_split(
+                temp_idx,
+                test_size=0.5,
+                random_state=seed,
+                stratify=y.loc[temp_idx],
+            )
+        else:
+            valid_idx = None
+            test_idx = temp_idx
+
+        cluster_splits[i] = {
+            "train": train_idx,
+            "valid": valid_idx,
+            "test": test_idx,
+        }
+
+
+    
+    #Global reconstruction by index
+    global_train_idx = pd.Index([])
+    global_test_idx = pd.Index([])
+    global_valid_idx = pd.Index([]) if hpo_tuning else None
+
+    for splits in cluster_splits.values():
+        global_train_idx = global_train_idx.union(splits["train"])
+        global_test_idx = global_test_idx.union(splits["test"])
+        if hpo_tuning:
+            global_valid_idx = global_valid_idx.union(splits["valid"])
+
+
+    global_info = preprocess_dataset(
+        X.loc[global_train_idx.union(global_test_idx if not hpo_tuning else global_valid_idx)],
+        y.loc[global_train_idx.union(global_test_idx if not hpo_tuning else global_valid_idx)],
+        encode_categorical=encode_categorical,
+        categorical_indicator=categorical_indicator,
+        attribute_names=attribute_names,
+        test_split_size=test_split_size,
+        seed=seed,
+        encoding_type=encoding_type,
+        hpo_tuning=False,
+    )
+
+    ct = global_info["column_transformer"]
+
+    X_processed = pd.DataFrame(
+        ct.transform(X),
+        index=X.index
+    )
+
+    X_train_full = X_processed.loc[global_train_idx]
+    X_test_full  = X_processed.loc[global_test_idx]
+    if hpo_tuning:
+        X_valid_full = X_processed.loc[global_valid_idx]
+
+
+
+    y_train_full = y.loc[global_train_idx]
+    y_test_full  = y.loc[global_test_idx]
+    if hpo_tuning:
+        y_valid_full = y.loc[global_valid_idx]
+
+    assert global_train_idx.isin(global_test_idx).sum() == 0
+
+    for i in clusters:
+        splits = cluster_splits[i]
+
+        info_cluster[i] = {
+            "X_train": X_train_full.loc[splits["train"]],
+            "y_train": y_train_full.loc[splits["train"]].to_numpy(),
+            "X_test":  X_test_full.loc[splits["test"]],
+            "y_test":  y_test_full.loc[splits["test"]].to_numpy(),
+            "categorical_indicator": global_info["categorical_indicator"],
+            "attribute_names": global_info["attribute_names"],
+            "cluster_len": len(clusters[i][0]),
+            "dataset_name": f"Cluster_{i}",
+        }
+
+        if hpo_tuning:
+            info_cluster[i]["X_valid"] = X_valid_full.loc[splits["valid"]]
+            info_cluster[i]["y_valid"] = y_valid_full.loc[splits["valid"]].to_numpy()
+
+
+    info_cluster["whole"] = {
+        "X_train": X_train_full,
+        "y_train": y_train_full.to_numpy(),
+        "X_test":  X_test_full,
+        "y_test":  y_test_full.to_numpy(),
+        "categorical_indicator": global_info["categorical_indicator"],
+        "attribute_names": global_info["attribute_names"],
+        "cluster_len": len(X_train_full) + len(X_test_full) + (len(X_valid_full) if hpo_tuning else 0),
+        "dataset_name": "Cluster_whole",
+    }
+
+    if hpo_tuning:
+        info_cluster["whole"]["X_valid"] = X_valid_full
+        info_cluster["whole"]["y_valid"] = y_valid_full.to_numpy()
+    
 
     return info_cluster, attribute_names, categorical_indicator
 
