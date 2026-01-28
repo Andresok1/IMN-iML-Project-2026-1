@@ -371,11 +371,15 @@ def global_json_calculation(path, feature_list):
     weighted_train_time = 0.0
     weighted_inference_time = 0.0
 
+
     feature_ranking = {}
     feature_ranking = {feature: 0 for feature in feature_list}
 
 
     for data in results:
+
+        if data.get("dataset_name") == "Whole_Cluster":
+            continue
 
         n = data["cluster_len"]
 
@@ -388,6 +392,8 @@ def global_json_calculation(path, feature_list):
         weighted_test_accuracy += data["test_accuracy"] * n
         weighted_test_bal_acc += data["test_balance_accuracy"] * n
         weighted_test_f1 += data["test_f1"] * n
+        weighted_test_precision += data["test_precision"] * n
+        weighted_test_recall += data["test_recall"] * n
 
         weighted_train_time += data["train_time"]
         weighted_inference_time += data["inference_time"]
@@ -409,6 +415,8 @@ def global_json_calculation(path, feature_list):
     weighted_test_accuracy /= total_samples
     weighted_test_bal_acc /= total_samples
     weighted_test_f1 /= total_samples
+    weighted_test_precision /= total_samples
+    weighted_test_recall /= total_samples
 
     for feature in feature_ranking:
         feature_ranking[feature] /= total_samples
@@ -423,16 +431,17 @@ def global_json_calculation(path, feature_list):
         "test_accuracy": weighted_test_accuracy,
         "test_balanced_accuracy": weighted_test_bal_acc,
         "test_f1": weighted_test_f1,
+        "test_precision": weighted_test_precision,
+        "test_recall": weighted_test_recall,
         "train_time": weighted_train_time,
         "inference_time": weighted_inference_time,
         "total_dataset_size": total_samples,
     }
     
 
-    results.append({"cluster_global": global_metrics})
+    results.append({"cluster_global_mean": global_metrics})
     
     results.append({"cluster_global_ranking": feature_ranking})
-
 
     with open(path, "w") as f:
         json.dump(results, f, indent=2)
@@ -443,3 +452,81 @@ def show_clusters(clusters):
     for i, (X_data, y_data) in clusters.items():
         cluster_size = len(X_data)  # El tamaño del cluster es el número de filas en X_data
         print(f"Cluster size {i}: {cluster_size}")
+
+
+
+def generate_cluster_feature_plots(summary_path):
+    parent_dir = os.path.dirname(summary_path)
+
+    with open(summary_path, "r") as f:
+        summary_data = json.load(f)
+
+    def plot_barh(features, weights, title, save_path):
+        plt.figure(figsize=(8, 6))
+        plt.barh(features, weights)
+        plt.axvline(0)
+        plt.xlabel("Feature weight")
+        plt.title(title)
+        plt.tight_layout()
+        plt.savefig(save_path)
+        plt.close()
+
+    # plots por cluster
+    for item in summary_data:
+        if "dataset_name" not in item:
+            continue
+
+        name = item["dataset_name"]
+        
+        if not name.lower().startswith("cluster"):
+            continue
+
+        features = item["top_features"]
+        weights = item["top_features_weights"]
+
+        features, weights = zip(
+            *sorted(zip(features, weights), key=lambda x: x[1])
+        )
+
+        folder_name = name.lower().replace("cluster", "cluster")        
+        cluster_dir = os.path.join(parent_dir, folder_name)
+
+        os.makedirs(cluster_dir, exist_ok=True)
+
+        save_path = os.path.join(cluster_dir, "top_features.png")
+
+        plot_barh(
+            features,
+            weights,
+            title=f"{name} Top Features",
+            save_path=save_path
+        )
+
+    # plot global
+    ranking = None
+    for item in summary_data:
+        if "cluster_global_ranking" in item:
+            ranking = item["cluster_global_ranking"]
+            break
+
+    if ranking is None:
+        return
+
+    features = list(ranking.keys())
+    weights = list(ranking.values())
+
+    features, weights = zip(
+        *sorted(zip(features, weights), key=lambda x: x[1])
+    )
+
+    summary_dir = os.path.join(parent_dir)
+    os.makedirs(summary_dir, exist_ok=True)
+
+    save_path = os.path.join(summary_dir, "cluster_global_ranking.png")
+
+    plot_barh(
+        features,
+        weights,
+        title="Global Feature Ranking",
+        save_path=save_path
+    )
