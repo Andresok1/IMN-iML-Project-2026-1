@@ -1,5 +1,5 @@
 import os
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 
 import numpy as np
 import openml
@@ -15,6 +15,14 @@ from sklearn.preprocessing import (
     OneHotEncoder,
     TargetEncoder,
 )
+from sklearn.metrics import (
+    roc_auc_score, accuracy_score, balanced_accuracy_score,
+    precision_score, recall_score, f1_score
+)
+
+from sklearn.cluster import AgglomerativeClustering
+from sklearn.preprocessing import StandardScaler
+import gower
 
 import torch
 import torch.nn as nn
@@ -317,6 +325,7 @@ def preprocess_dataset(
     seed: int = 11,
     encoding_type: str = "ordinal",
     hpo_tuning: bool = False,
+    row_id: Optional[pd.Series] = None,
 ) -> Dict:
     """Preprocess the dataset.
 
@@ -371,22 +380,45 @@ def preprocess_dataset(
             column_categories = list(X[column_name].cat.categories)
             column_category_values.append(column_categories)
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X,
-        y,
-        test_size=test_split_size,
-        random_state=seed,
-        stratify=y,
-    )
+    # Für identische Splits
+    if row_id is None:
+        X_train, X_test, y_train, y_test = train_test_split(
+            X,
+            y,
+            test_size=test_split_size,
+            random_state=seed,
+            stratify=y,
+        )
+        row_id_train = row_id_test = None
+    else:
+        X_train, X_test, y_train, y_test, row_id_train, row_id_test = train_test_split(
+            X,
+            y,
+            row_id,
+            test_size=test_split_size,
+            random_state=seed,
+            stratify=y,
+        )
 
     if hpo_tuning:
-        X_train, X_valid, y_train, y_valid = train_test_split(
-            X_train,
-            y_train,
-            test_size=test_split_size / (1 - test_split_size),
-            random_state=seed,
-            stratify=y_train,
-        )
+        if row_id is None:
+            X_train, X_valid, y_train, y_valid = train_test_split(
+                X_train,
+                y_train,
+                test_size=test_split_size / (1 - test_split_size),
+                random_state=seed,
+                stratify=y_train,
+            )
+            row_id_valid = None
+        else:
+            X_train, X_valid, y_train, y_valid, row_id_train, row_id_valid = train_test_split(
+                X_train,
+                y_train,
+                row_id_train,
+                test_size=test_split_size / (1 - test_split_size),
+                random_state=seed,
+                stratify=y_train,
+            )
 
     # pandas series number of unique values
     nr_classes = y_train.nunique()
@@ -523,8 +555,228 @@ def preprocess_dataset(
         info_dict['X_valid'] = X_valid
         info_dict['y_valid'] = y_valid
 
+    # row_id für identische Splits
+    if row_id is not None:
+        info_dict["row_id_train"] = row_id_train.to_numpy().astype(int)
+        info_dict["row_id_test"] = row_id_test.to_numpy().astype(int)
+        if hpo_tuning:
+            info_dict["row_id_valid"] = row_id_valid.to_numpy().astype(int)
+
     return info_dict
 
+# Ermöglicht die erstellen Splits für die NonClustering Variante
+def preprocess_fixed_splits(
+    X: pd.DataFrame,
+    y: pd.Series,
+    encode_categorical: bool,
+    categorical_indicator: List,
+    attribute_names: List,
+    split_manifest_path: str,
+    seed: int = 11,
+    encoding_type: str = "ordinal",
+    hpo_tuning: bool = False,
+    row_id: Optional[pd.Series] = None,
+) -> Dict:
+    """
+    Wie preprocess_dataset(), aber nutzt bereits feste Splits aus split_manifest.csv.
+    Die Splits werden über row_id rekonstruiert (train/test/valid).
+    """
+
+    manifest = pd.read_csv(split_manifest_path)
+
+    required_cols = {"row_id", "split"}
+    if not required_cols.issubset(set(manifest.columns)):
+        raise ValueError(f"Manifest muss Spalten {required_cols} enthalten. Gefunden: {manifest.columns.tolist()}")
+
+    train_ids = set(manifest.loc[manifest["split"] == "train", "row_id"].astype(int))
+    test_ids  = set(manifest.loc[manifest["split"] == "test",  "row_id"].astype(int))
+    valid_ids = set(manifest.loc[manifest["split"] == "valid", "row_id"].astype(int)) if hpo_tuning else set()
+
+    if "row_id" in X.columns:
+        X = X.drop(columns=["row_id"])
+        if "row_id" in attribute_names:
+            idx = attribute_names.index("row_id")
+            attribute_names.pop(idx)
+            categorical_indicator.pop(idx)
+
+    dropped_column_names = []
+    dropped_column_indices = []
+
+    for column_index, column_name in enumerate(X.keys()):
+        if X[column_name].isnull().sum() > len(X[column_name]) * 0.9:
+            dropped_column_names.append(column_name)
+            dropped_column_indices.append(column_index)
+        if X[column_name].nunique() == 1:
+            dropped_column_names.append(column_name)
+            dropped_column_indices.append(column_index)
+
+    for column_index, column_name in enumerate(X.keys()):
+        if X[column_name].dtype in ["object", "category", "string"]:
+            if X[column_name].nunique() / len(X[column_name]) > 0.9:
+                dropped_column_names.append(column_name)
+                dropped_column_indices.append(column_index)
+
+
+    X = X.drop(dropped_column_names, axis=1)
+
+    attribute_names = [a for a in attribute_names if a not in dropped_column_names]
+    categorical_indicator = [
+        categorical_indicator[i]
+        for i in range(len(categorical_indicator))
+        if i not in dropped_column_indices
+    ]
+
+    column_category_values = []
+    for cat_indicator, column_name in zip(categorical_indicator, X.keys()):
+        if cat_indicator:
+            column_category_values.append(list(X[column_name].cat.categories))
+
+    # Split über Manifest
+    rid = pd.Series(row_id).astype(int)
+
+    m_train = rid.isin(train_ids)
+    m_test = rid.isin(test_ids)
+    m_valid = rid.isin(valid_ids) if hpo_tuning else None
+
+
+    X_train = X.loc[m_train].copy()
+    y_train = y.loc[m_train].copy()
+    row_id_train = rid.loc[m_train].copy()
+
+    X_test = X.loc[m_test].copy()
+    y_test = y.loc[m_test].copy()
+    row_id_test = rid.loc[m_test].copy()
+
+    if hpo_tuning and m_valid is not None and m_valid.sum() > 0:
+        X_valid = X.loc[m_valid].copy()
+        y_valid = y.loc[m_valid].copy()
+        row_id_valid = rid.loc[m_valid].copy()
+    else:
+        X_valid = None
+        y_valid = None
+        row_id_valid = None
+
+    # --- Label-Encoding wie preprocess_dataset ---
+    nr_classes = y_train.nunique()
+
+    label_encoder = LabelEncoder()
+    label_encoder.fit(y_train)
+
+    y_train_enc = label_encoder.transform(y_train)
+    y_test_enc = label_encoder.transform(y_test)
+    if hpo_tuning and y_valid is not None:
+        y_valid_enc = label_encoder.transform(y_valid)
+    else:
+        y_valid_enc = None
+
+    numerical_features = [i for i in range(len(categorical_indicator)) if not categorical_indicator[i]]
+    categorical_features = [i for i in range(len(categorical_indicator)) if categorical_indicator[i]]
+
+    # --- Preprocessor bauen wie preprocess_dataset ---
+    dataset_preprocessors = []
+    if len(numerical_features) > 0:
+        dataset_preprocessors.append(("numerical", StandardScaler(), numerical_features))
+
+    if len(categorical_features) > 0 and encode_categorical:
+        if nr_classes > 2:
+            if encoding_type == "ordinal":
+                categorical_preprocessor = (
+                    "categorical_encoder",
+                    OrdinalEncoder(
+                        handle_unknown="use_encoded_value",
+                        unknown_value=-1,
+                        categories=column_category_values,
+                    ),
+                    categorical_features,
+                )
+            else:
+                categorical_preprocessor = (
+                    "categorical_encoder",
+                    OneHotEncoder(
+                        handle_unknown="ignore",
+                        sparse=False,
+                        categories=column_category_values,
+                        drop="if_binary",
+                    ),
+                    categorical_features,
+                )
+        else:
+            categorical_preprocessor = (
+                "categorical_encoder",
+                TargetEncoder(random_state=seed),
+                categorical_features,
+            )
+        dataset_preprocessors.append(categorical_preprocessor)
+
+    column_transformer = ColumnTransformer(
+        dataset_preprocessors,
+        remainder="passthrough",
+    )
+
+    X_train_tr = column_transformer.fit_transform(X_train, y_train_enc)
+    X_test_tr = column_transformer.transform(X_test)
+
+    if hpo_tuning and X_valid is not None:
+        X_valid_tr = column_transformer.transform(X_valid)
+    else:
+        X_valid_tr = None
+
+    # wieder DataFrames
+    X_train_tr = pd.DataFrame(X_train_tr)
+    X_test_tr = pd.DataFrame(X_test_tr)
+    if X_valid_tr is not None:
+        X_valid_tr = pd.DataFrame(X_valid_tr)
+
+    # --- neue Attributnamen / categorical_indicator wie preprocess_dataset ---
+    if len(numerical_features) > 0:
+        new_categorical_indicator = [False] * len(numerical_features)
+        new_attribute_names = [attribute_names[i] for i in numerical_features]
+    else:
+        new_categorical_indicator = []
+        new_attribute_names = []
+
+    if len(categorical_features) > 0:
+        if nr_classes == 2:
+            new_categorical_indicator.extend([True] * len(categorical_features))
+            new_attribute_names.extend([attribute_names[i] for i in categorical_features])
+        else:
+            for i in range(len(column_category_values)):
+                nr_unique_categories = len(column_category_values[i])
+                if nr_unique_categories > 2:
+                    new_categorical_indicator.extend([True] * len(column_category_values[i]))
+                    new_attribute_names.extend([
+                        attribute_names[categorical_features[i]] + "_" + str(category)
+                        for category in column_category_values[i]
+                    ])
+                else:
+                    new_categorical_indicator.extend([True])
+                    new_attribute_names.extend([attribute_names[categorical_features[i]]])
+
+    # --- Missing Values wie preprocess_dataset ---
+    if encode_categorical:
+        X_train_tr = X_train_tr.fillna(0)
+        X_test_tr = X_test_tr.fillna(0)
+        if X_valid_tr is not None:
+            X_valid_tr = X_valid_tr.fillna(0)
+
+    info_dict = {
+        "X_train": X_train_tr,
+        "X_test": X_test_tr,
+        "y_train": y_train_enc,
+        "y_test": y_test_enc,
+        "categorical_indicator": new_categorical_indicator,
+        "attribute_names": new_attribute_names,
+        # row_id für identische Splits
+        "row_id_train": row_id_train.to_numpy().astype(int),
+        "row_id_test": row_id_test.to_numpy().astype(int),
+    }
+
+    if hpo_tuning and X_valid_tr is not None and y_valid_enc is not None and row_id_valid is not None:
+        info_dict["X_valid"] = X_valid_tr
+        info_dict["y_valid"] = y_valid_enc
+        info_dict["row_id_valid"] = row_id_valid.to_numpy().astype(int)
+
+    return info_dict
 
 def get_dataset(
     dataset_id: int,
@@ -570,24 +822,31 @@ def get_dataset(
 
     return info_dict
 
+
 # Neue Hilfsfunktion zum Einlesen einer lokalen CSV
 def get_dataset_from_csv(
     csv_path: str,
     target_column: str,
     test_split_size: float = 0.2,
-    seed: int = 11,
+    seed: int = 0,
     encode_categorical: bool = True,
     encoding_type: str = 'ordinal',
     hpo_tuning: bool = False,
     n_clusters: int = 1, # für Clustering
+    clustering: str = "kmeans",
 ) -> Dict:
     """Load and preprocess a dataset from a local CSV file."""
 
     df = pd.read_csv(csv_path)
+    df["row_id"] = np.arange(len(df))
+    row_id = df["row_id"].copy()  # row_id NICHT als Feature nutzen
+    df = df.drop(columns=["row_id"]) #TODO Nochmal checken
 
     # Zielvariable
     y = df[target_column]
     y = y.str.strip() if y.dtype == 'object' else y
+
+
 
     # Feature-Matrix
     X = df.drop(columns=[target_column]).copy()
@@ -605,6 +864,7 @@ def get_dataset_from_csv(
     mask = y.isin(valid_classes)
     X = X.loc[mask].reset_index(drop=True)
     y = y.loc[mask].reset_index(drop=True)
+    row_id = row_id.loc[mask].reset_index(drop=True)
 
     categorical_indicator = X.dtypes == 'object'
     attribute_names = X.columns.to_numpy()
@@ -617,15 +877,25 @@ def get_dataset_from_csv(
     # Wie get_data Funktion, Preprocessing
     # Clustering
     if n_clusters > 1:
-        clusters, cluster_labels = split_dataset_by_clustering(
-            X,
-            y,
-            n_clusters=n_clusters,
-            random_state=seed,
-        )
+        if clustering == "kmeans":
+            clusters, cluster_labels = split_dataset_by_clustering(
+                X,
+                y,
+                row_id=row_id,
+                n_clusters=n_clusters,
+                random_state=seed,
+            )
+        elif clustering == "gower":
+            clusters, cluster_labels = split_dataset_by_gower(
+                X,
+                y,
+                row_id=row_id,
+                n_clusters=n_clusters,
+                random_state=seed,
+            )
 
         cluster_infos = {}
-        for cid, (X_c, y_c) in clusters.items():
+        for cid, (X_c, y_c, row_id_c) in clusters.items():
             info = preprocess_dataset(
                 X_c,
                 y_c,
@@ -636,6 +906,7 @@ def get_dataset_from_csv(
                 seed=seed,
                 encoding_type=encoding_type,
                 hpo_tuning=hpo_tuning,
+                row_id=row_id_c,
             )
             info["dataset_name"] = f"{os.path.basename(csv_path)}_cluster_{cid}"
             cluster_infos[cid] = info
@@ -659,6 +930,7 @@ def get_dataset_from_csv(
         seed=seed,
         encoding_type=encoding_type,
         hpo_tuning=hpo_tuning,
+        row_id=row_id,
     )
 
     info["dataset_name"] = os.path.basename(csv_path)
@@ -667,6 +939,7 @@ def get_dataset_from_csv(
 def split_dataset_by_clustering(
     X: pd.DataFrame,
     y: pd.Series,
+    row_id: pd.Series,
     n_clusters: int = 3,
     random_state: int = 11,
 ):
@@ -702,6 +975,64 @@ def split_dataset_by_clustering(
         clustered_data[cluster_id] = (
             X.loc[mask].reset_index(drop=True),
             y.loc[mask].reset_index(drop=True),
+            row_id.loc[mask].reset_index(drop=True),
+        )
+
+    return clustered_data, cluster_labels
+
+def split_dataset_by_gower(
+    X: pd.DataFrame,
+    y: pd.Series,
+    row_id: pd.Series,
+    n_clusters: int = 4,
+    random_state: int = 11,
+):
+    """
+    Split dataset into K clusters using Gower distance + Hierarchical clustering.
+
+    Input/Output identisch zu split_dataset_by_clustering (KMeans):
+      - Input:  X, y, row_id, n_clusters, random_state
+      - Output: clustered_data (dict), cluster_labels (np.array)
+
+    clustered_data[cluster_id] = (X_cluster, y_cluster, row_id_cluster)
+    """
+
+    if n_clusters < 2:
+        raise ValueError("n_clusters muss >= 2 sein für Clustering.")
+
+    numeric_cols = X.select_dtypes(include=[np.number]).columns.tolist()
+    cat_cols = [c for c in X.columns if c not in numeric_cols]
+
+    if len(numeric_cols) == 0 and len(cat_cols) == 0:
+        raise ValueError("X enthält keine Features.")
+
+    X_gower = X.copy()
+
+    for c in numeric_cols:
+        X_gower[c] = pd.to_numeric(X_gower[c], errors="coerce").astype(float)
+
+    for c in cat_cols:
+        X_gower[c] = X_gower[c].astype(str).fillna("missing")
+
+    # Gower Distanzmatrix
+    D = gower.gower_matrix(X_gower)
+
+    # Hierarchical Clustering auf Distanzmatrix
+    model = AgglomerativeClustering(
+        n_clusters=n_clusters,
+        metric="precomputed",
+        linkage="average",
+    )
+
+    cluster_labels = model.fit_predict(D)  # 0..n_clusters-1
+
+    clustered_data = {}
+    for cluster_id in range(n_clusters):
+        mask = cluster_labels == cluster_id
+        clustered_data[cluster_id] = (
+            X.loc[mask].reset_index(drop=True),
+            y.loc[mask].reset_index(drop=True),
+            row_id.loc[mask].reset_index(drop=True),
         )
 
     return clustered_data, cluster_labels
@@ -781,17 +1112,19 @@ def get_next_run_id(base_dir: str) -> str:
 def plot_top_features(
     output_info: dict,
     out_dir: str,
-    top_k: int = 15,
+    top_k: int = 20,
     filename: str = "top_features.png",
+    feature_key: str = "top_features",
+    weight_key: str = "top_features_weights",
 ):
-    if "top_features" not in output_info:
-        return  # nichts zu plotten (z.B. nicht-interpretable Modell)
+    if feature_key not in output_info or weight_key not in output_info:
+        return  # nichts zu plotten z.B. nicht-interpretable Modell
 
-    features = output_info["top_features"][:top_k]
-    weights = output_info["top_features_weights"][:top_k]
+    features = output_info[feature_key][:top_k]
+    weights = output_info[weight_key][:top_k]
 
     plt.figure(figsize=(8, 5))
-    plt.barh(features[::-1], weights[::-1])  # umdrehen für schöne Sortierung
+    plt.barh(features[::-1], weights[::-1])
     plt.xlabel("Feature Importance")
     plt.title("Top Feature Importances")
     plt.tight_layout()
@@ -828,3 +1161,25 @@ def plot_clusters_pca(
     plt.savefig(os.path.join(out_dir, filename))
     plt.close()
 
+# Speichern anpassen für globale Metriken
+def compute_global_metrics_from_predictions(pred_df: pd.DataFrame) -> dict:
+    y_true = pred_df["y_true"].astype(int).to_numpy()
+    y_pred = pred_df["y_pred"].astype(int).to_numpy()
+    y_prob = pred_df["y_prob"].astype(float).to_numpy()
+
+    out = {
+        "total_test_samples": int(len(pred_df)),
+        "test_accuracy": float(accuracy_score(y_true, y_pred)),
+        "test_balanced_accuracy": float(balanced_accuracy_score(y_true, y_pred)),
+        "test_precision": float(precision_score(y_true, y_pred, zero_division=0)),
+        "test_recall": float(recall_score(y_true, y_pred, zero_division=0)),
+        "test_f1": float(f1_score(y_true, y_pred, zero_division=0)),
+    }
+
+    # AUROC braucht beide Klassen
+    if len(np.unique(y_true)) == 2:
+        out["test_auroc"] = float(roc_auc_score(y_true, y_prob))
+    else:
+        out["test_auroc"] = None
+
+    return out

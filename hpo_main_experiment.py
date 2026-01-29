@@ -8,11 +8,11 @@ import pandas as pd
 
 from main_experiment import main
 from search_spaces import hpo_space_imn, hpo_space_tabresnet
-from utils import get_dataset, get_dataset_from_csv, get_next_run_id, plot_top_features, plot_clusters_pca
-from sklearn.metrics import (
-    roc_auc_score, accuracy_score, balanced_accuracy_score,
-    precision_score, recall_score, f1_score
+from utils import (
+    get_dataset, get_dataset_from_csv, get_next_run_id,
+    plot_top_features, plot_clusters_pca, compute_global_metrics_from_predictions, preprocess_fixed_splits
 )
+
 
 def objective(
     trial: optuna.trial.Trial,
@@ -66,8 +66,168 @@ def objective(
 
     return output_info['test_auroc']
 
-BATCH_SIZE = 32 # Standard war 64
+BATCH_SIZE = 64 # Standard war 64
+NR_EPOCHS = 150
 # ValueError: '16' not in (32, 64, 128, 256, 512)
+
+DEFAULT_TRIAL = {
+    'nr_epochs': NR_EPOCHS,
+    'batch_size': BATCH_SIZE,
+    'learning_rate': 0.01,
+    'weight_decay': 0.01,
+    'dropout_rate': 0.25,
+}
+DEFAULT_TRIAL_INN = {'weight_norm': 0.1}
+
+def run_hpo_tuning(
+    args,
+    X_train, y_train,
+    X_valid, y_valid,
+    categorical_indicator,
+    attribute_names,
+    dataset_name,
+    out_dir,
+):
+    """Optuna HPO laufen lassen und trials.csv in out_dir speichern."""
+    if not args.hpo_tuning:
+        return None # kein hpo tuning
+
+    time_limit = 60 * 60
+    study = optuna.create_study(
+        direction='maximize',
+        sampler=optuna.samplers.TPESampler(seed=args.seed),
+    )
+
+    # queue default configurations as the first trials
+    default_trial = dict(DEFAULT_TRIAL)
+    if args.interpretable:
+        default_trial.update(DEFAULT_TRIAL_INN)
+    study.enqueue_trial(default_trial)
+
+    try:
+        study.optimize(
+            lambda trial: objective(
+                trial,
+                args,
+                X_train, y_train,
+                X_valid, y_valid,
+                categorical_indicator,
+                attribute_names,
+                dataset_name,
+            ),
+            n_trials=args.n_trials,
+            timeout=time_limit,
+        )
+    except optuna.exceptions.OptunaError as e:
+        print(f'Optimization stopped: {e}')
+
+    best_params = study.best_params
+    trial_df = study.trials_dataframe(attrs=('number', 'value', 'params', 'state'))
+    trial_df.to_csv(os.path.join(out_dir, 'trials.csv'), index=False)
+
+    return best_params
+
+def save_cluster(
+        args,
+        X_train, y_train,
+        X_test, y_test,
+        X_valid=None, y_valid=None,
+        cid=None,
+        out_dir=None,
+):
+    """Speichert cluster_info.json + train/test CSVs"""
+    n_train = len(X_train)
+    n_test = len(X_test)
+    n_valid = len(X_valid) if args.hpo_tuning else 0
+    n_total = n_train + n_test + n_valid
+
+    # Labelverteilung
+    train_label_dist = pd.Series(y_train).value_counts().to_dict()
+    test_label_dist = pd.Series(y_test).value_counts().to_dict()
+    valid_label_dist = pd.Series(y_valid).value_counts().to_dict() if args.hpo_tuning else {}
+
+    cluster_stats = {
+        "cluster_id": cid,
+        "n_total": int(n_total),
+        "n_train": int(n_train),
+        "n_valid": int(n_valid),
+        "n_test": int(n_test),
+        "label_distribution_train": train_label_dist,
+        "label_distribution_valid": valid_label_dist,
+        "label_distribution_test": test_label_dist,
+    }
+
+    with open(os.path.join(out_dir, "cluster_info.json"), "w") as f:
+        json.dump(cluster_stats, f, indent=2)
+
+    # Cluster Train Daten abspeichern
+    train_df = X_train.copy()
+    train_df[args.target_column] = y_train
+    train_df.to_csv(
+        os.path.join(out_dir, "train_data.csv"),
+        index=False
+    )
+
+    # Cluster Test Daten abspeichern
+    test_df = X_test.copy()
+    test_df[args.target_column] = y_test
+    test_df.to_csv(
+        os.path.join(out_dir, "test_data.csv"),
+        index=False
+    )
+
+def run_this(
+        args,
+        dataset_name,
+        attribute_names,
+        categorical_indicator,
+        X_train, y_train,
+        X_test, y_test,
+        X_valid=None, y_valid=None,
+        out_dir=None,
+):
+    """Ein kompletter Run: HPO optional, Training, output_info.json, Plot, (predictions.csv kommt aus main_experiment)."""
+    os.makedirs(out_dir, exist_ok=True) #TODO
+
+    best_params = run_hpo_tuning(
+        args,
+        X_train, y_train,
+        X_valid, y_valid,
+        categorical_indicator,
+        attribute_names,
+        dataset_name,
+        out_dir,
+    )
+
+    X_train = pd.concat([X_train, X_valid], axis=0)
+    y_train = np.concatenate([y_train, y_valid], axis=0)
+
+    output_info = main(  # Hier erstelle ich das Modell
+        args,
+        best_params,
+        X_train,
+        y_train,
+        X_test,
+        y_test,
+        categorical_indicator,
+        attribute_names,
+        dataset_name,
+        out_dir,  # Model.pt richtig im Ordner speichern
+    )
+
+    # Balkenplot erzeugen
+    plot_top_features(output_info, out_dir)
+
+    with open(os.path.join(out_dir, 'output_info.json'), 'w') as f:
+        json.dump(output_info, f, indent=2)
+
+    return output_info
+
+def save_manifest_from_clusters(
+        info,
+        out_dir,
+):
+    all_rows = []
 
 def hpo_main(args):
     """The main function for hyperparameter optimization."""
@@ -81,7 +241,8 @@ def hpo_main(args):
             seed=args.seed,
             encode_categorical=True,
             hpo_tuning=args.hpo_tuning,
-            n_clusters = 2
+            n_clusters = 2,
+            clustering =args.clustering
         )
         dataset_name = os.path.splitext(
             os.path.basename(args.dataset_path)
@@ -101,6 +262,24 @@ def hpo_main(args):
     run_id = get_next_run_id(dataset_out_dir)
     run_out_dir = os.path.join(dataset_out_dir, run_id)
     os.makedirs(run_out_dir, exist_ok=True)
+
+    # Manifest speichern für identische Splits
+    if info.get("clustered", False):
+        all_rows = []
+
+        for cid, cinfo in info["clusters"].items():
+            # train
+            for rid in cinfo.get("row_id_train", []):
+                all_rows.append({"row_id": int(rid), "cluster_id": int(cid), "split": "train"})
+            # test
+            for rid in cinfo.get("row_id_test", []):
+                all_rows.append({"row_id": int(rid), "cluster_id": int(cid), "split": "test"})
+            # valid (optional)
+            for rid in cinfo.get("row_id_valid", []):
+                all_rows.append({"row_id": int(rid), "cluster_id": int(cid), "split": "valid"})
+
+        manifest = pd.DataFrame(all_rows)
+        manifest.to_csv(os.path.join(run_out_dir, "split_manifest.csv"), index=False)
 
     # Clustering
     if info.get("clustered", False):
@@ -185,7 +364,7 @@ def hpo_main(args):
                 if args.interpretable:
                     study.enqueue_trial(
                         {
-                            'nr_epochs': 500,
+                            'nr_epochs': NR_EPOCHS,
                             'batch_size': BATCH_SIZE,
                             'learning_rate': 0.01,
                             'weight_decay': 0.01,
@@ -196,7 +375,7 @@ def hpo_main(args):
                 else:
                     study.enqueue_trial(
                         {
-                            'nr_epochs': 500,
+                            'nr_epochs': NR_EPOCHS,
                             'batch_size': BATCH_SIZE,
                             'learning_rate': 0.01,
                             'weight_decay': 0.01,
@@ -249,7 +428,7 @@ def hpo_main(args):
                 cluster_out_dir, # Model.pt richtig im Ordner speichern
             )
 
-            # Plot erzeugen
+            # BalkenPlot erzeugen
             plot_top_features(output_info, cluster_out_dir)
 
             with open(os.path.join(cluster_out_dir, 'output_info.json'), 'w') as f:
@@ -317,41 +496,27 @@ def hpo_main(args):
                 return float("nan")
             return float((vals[mask] * weights[mask]).sum() / weights[mask].sum())
 
-        for m in [
+        mean_metrics = [
             "test_accuracy",
             "test_auroc",
-            "train_time",
-            "inference_time",
             "test_balanced_accuracy",
             "test_precision",
             "test_recall",
             "test_f1",
-        ]:
+        ]
+
+        sum_metrics = [
+            "train_time",
+            "inference_time",
+        ]
+
+        for m in mean_metrics:
             if m in df.columns:
                 combined[f"weighted_{m}"] = weighted_mean(m)
 
-        # Speichern anpassen für globale Metriken
-        def compute_global_metrics_from_predictions(pred_df: pd.DataFrame) -> dict:
-            y_true = pred_df["y_true"].astype(int).to_numpy()
-            y_pred = pred_df["y_pred"].astype(int).to_numpy()
-            y_prob = pred_df["y_prob"].astype(float).to_numpy()
-
-            out = {
-                "total_test_samples": int(len(pred_df)),
-                "test_accuracy": float(accuracy_score(y_true, y_pred)),
-                "test_balanced_accuracy": float(balanced_accuracy_score(y_true, y_pred)),
-                "test_precision": float(precision_score(y_true, y_pred, zero_division=0)),
-                "test_recall": float(recall_score(y_true, y_pred, zero_division=0)),
-                "test_f1": float(f1_score(y_true, y_pred, zero_division=0)),
-            }
-
-            # AUROC braucht beide Klassen
-            if len(np.unique(y_true)) == 2:
-                out["test_auroc"] = float(roc_auc_score(y_true, y_prob))
-            else:
-                out["test_auroc"] = None
-
-            return out
+        for m in sum_metrics:
+            if m in df.columns:
+                combined[f"total_{m}"] = float(pd.to_numeric(df[m], errors="coerce").fillna(0.0).sum())
 
         # Feature weights kombinieren
         if args.interpretable:
@@ -377,11 +542,7 @@ def hpo_main(args):
                     combined_feature_weights[f] /= total_weight
 
                 # sortieren nach Größe
-                sorted_items = sorted(
-                    combined_feature_weights.items(),
-                    key=lambda x: abs(x[1]),
-                    reverse=True
-                )
+                sorted_items = sorted(combined_feature_weights.items(), key=lambda x: x[1], reverse=True)
 
                 combined["combined_top_features"] = [k for k, _ in sorted_items]
                 combined["combined_top_features_weights"] = [v for _, v in sorted_items]
@@ -389,12 +550,20 @@ def hpo_main(args):
                 combined["combined_top_features"] = []
                 combined["combined_top_features_weights"] = []
 
+        # BalkenPlot erzeugen
+        plot_top_features(
+            combined,
+            run_out_dir,
+            feature_key="combined_top_features",
+            weight_key="combined_top_features_weights",
+        )
+
         with open(os.path.join(run_out_dir, "combined_metrics.json"), "w") as f:
             json.dump(combined, f, indent=2)
 
-        print("\n=== Combined (weighted) metrics ===")
-        for k, v in combined.items():
-            print(f"{k}: {v}")
+        # print("\n=== Combined (weighted) metrics ===")
+        # for k, v in combined.items():
+            # print(f"{k}: {v}")
 
         # Globale Metriken
         all_preds = []
@@ -427,21 +596,84 @@ def hpo_main(args):
         else:
             print("Keine predictions.csv gefunden, keine globalen Metriken berechenbar.")
 
-        return
+        # return # Auskommentert, Sonst nur Clustering und keine Einzelnes
 
     # Alter Code, kein Clustering
-    attribute_names = info['attribute_names']
-    categorical_indicator = info['categorical_indicator']
 
-    X_train = info['X_train']
-    X_test = info['X_test']
+    baseline_out_dir = os.path.join(run_out_dir, "baseline_noncluster")
+    os.makedirs(baseline_out_dir, exist_ok=True)
 
-    y_train = info['y_train']
-    y_test = info['y_test']
+    manifest_path = os.path.join(run_out_dir, "split_manifest.csv")
+
+    # Originale Daten nochmal neu laden, vermutlich besser
+    df = pd.read_csv(args.dataset_path)
+    df["row_id"] = np.arange(len(df))
+
+    y = df[args.target_column]
+    y = y.str.strip() if y.dtype == "object" else y
+
+    X = df.drop(columns=[args.target_column]).copy()
+    if "customerID" in X.columns:
+        X = X.drop(columns=["customerID"])
+
+    # TODO Hier nochmal gucken wegen doppelt
+    min_samples_per_class = 2
+    vc = y.value_counts()
+    valid_classes = vc[vc >= min_samples_per_class].index
+    mask = y.isin(valid_classes)
+    X = X.loc[mask].reset_index(drop=True)
+    y = y.loc[mask].reset_index(drop=True)
+    row_id = df.loc[mask, "row_id"].reset_index(drop=True)
+
+    categorical_indicator = (X.dtypes == "object")
+    attribute_names = X.columns.to_numpy()
+
+    # category cast
+    for col, is_cat in zip(X.columns, categorical_indicator):
+        if is_cat:
+            X[col] = X[col].astype("category")
+
+    info_nc = preprocess_fixed_splits(
+        X=X,
+        y=y,
+        encode_categorical=True,
+        categorical_indicator=categorical_indicator.to_numpy().tolist(),
+        attribute_names=attribute_names.tolist(),
+        split_manifest_path=manifest_path,
+        seed=args.seed,
+        encoding_type=args.encoding_type,
+        hpo_tuning=args.hpo_tuning,
+        row_id=row_id,
+    )
+
+    attribute_names = info_nc['attribute_names']
+    categorical_indicator = info_nc['categorical_indicator']
+
+    X_train = info_nc['X_train']
+    X_test = info_nc['X_test']
+
+    y_train = info_nc['y_train']
+    y_test = info_nc['y_test']
 
     if args.hpo_tuning:
-        X_valid = info['X_valid']
-        y_valid = info['y_valid']
+        X_valid = info_nc['X_valid']
+        y_valid = info_nc['y_valid']
+
+    # Cluster Train Daten abspeichern
+    train_df = X_train.copy()
+    train_df[args.target_column] = y_train
+    train_df.to_csv(
+        os.path.join(baseline_out_dir, "train_data.csv"),
+        index=False
+    )
+
+    # Cluster Test Daten abspeichern
+    test_df = X_test.copy()
+    test_df[args.target_column] = y_test
+    test_df.to_csv(
+        os.path.join(baseline_out_dir, "test_data.csv"),
+        index=False
+    )
 
     model_name = 'inn' if args.interpretable else 'tabresnet'
     output_directory = os.path.join(
@@ -451,7 +683,7 @@ def hpo_main(args):
         f'{args.seed}',
     )
 
-    os.makedirs(output_directory, exist_ok=True)
+    #os.makedirs(output_directory, exist_ok=True)
 
     best_params = None
     if args.hpo_tuning:
@@ -466,7 +698,7 @@ def hpo_main(args):
         if args.interpretable:
             study.enqueue_trial(
                 {
-                    'nr_epochs': 500,
+                    'nr_epochs': NR_EPOCHS,
                     'batch_size': BATCH_SIZE,
                     'learning_rate': 0.01,
                     'weight_decay': 0.01,
@@ -477,7 +709,7 @@ def hpo_main(args):
         else:
             study.enqueue_trial(
                 {
-                    'nr_epochs': 500,
+                    'nr_epochs': NR_EPOCHS,
                     'batch_size': BATCH_SIZE,
                     'learning_rate': 0.01,
                     'weight_decay': 0.01,
@@ -506,7 +738,7 @@ def hpo_main(args):
 
         best_params = study.best_params
         trial_df = study.trials_dataframe(attrs=('number', 'value', 'params', 'state'))
-        trial_df.to_csv(os.path.join(run_out_dir, 'trials.csv'), index=False)
+        trial_df.to_csv(os.path.join(baseline_out_dir, 'trials.csv'), index=False)
 
     # concatenate train and validation
     X_train = pd.concat([X_train, X_valid], axis=0)
@@ -522,7 +754,7 @@ def hpo_main(args):
         categorical_indicator,
         attribute_names,
         dataset_name,
-        run_out_dir
+        baseline_out_dir
     )
 
     combined = {
@@ -536,15 +768,27 @@ def hpo_main(args):
         "weighted_test_precision": output_info.get("test_precision"),
         "weighted_test_recall": output_info.get("test_recall"),
         "weighted_test_f1": output_info.get("test_f1"),
+        "split_manifest": "split_manifest.csv",
     }
 
-    with open(os.path.join(run_out_dir, "combined_metrics.json"), "w") as f:
+    with open(os.path.join(baseline_out_dir, "combined_metrics.json"), "w") as f:
         json.dump(combined, f, indent=2)
 
-    # Plot erzeugen
-    plot_top_features(output_info, run_out_dir)
+    # Globale predictions und Metriken
+    pred_path = os.path.join(baseline_out_dir, "predictions.csv")
+    if os.path.exists(pred_path):
+        pred_df = pd.read_csv(pred_path)
+        global_metrics = compute_global_metrics_from_predictions(pred_df)
+        global_metrics["n_clusters"] = 1
 
-    with open(os.path.join(run_out_dir, 'output_info.json'), 'w') as f:
+        pred_df.to_csv(os.path.join(baseline_out_dir, "global_predictions.csv"), index=False)
+        with open(os.path.join(baseline_out_dir, "global_metrics.json"), "w") as f:
+            json.dump(global_metrics, f, indent=2)
+
+    # Plot erzeugen
+    plot_top_features(output_info, baseline_out_dir)
+
+    with open(os.path.join(baseline_out_dir, 'output_info.json'), 'w') as f:
         json.dump(output_info, f)
 
 
@@ -655,6 +899,15 @@ if __name__ == "__main__":
         type=str,
         default=None,
         help='Target column name for CSV datasets',
+    )
+
+    # Neues Argument für Clustering
+    parser.add_argument(
+        "--clustering",
+        type=str,
+        default="kmeans",
+        choices=["kmeans", "gower"],
+        help="Clustering algorithm to use",
     )
 
     args = parser.parse_args()

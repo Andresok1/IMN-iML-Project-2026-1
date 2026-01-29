@@ -5,14 +5,18 @@ from typing import Dict
 
 import numpy as np
 import pandas as pd
+from matplotlib import pyplot as plt
 from sklearn.metrics import (
     accuracy_score, roc_auc_score, mean_squared_error,
     balanced_accuracy_score, precision_score, recall_score, f1_score
 )
 import torch
 import wandb
+import shap
 
 from models.model import Classifier
+
+NR_EPOCHS = 150
 
 def main(
     args: argparse.Namespace,
@@ -55,7 +59,7 @@ def main(
 
     if hp_config is None:
         hp_config = {
-            'nr_epochs': 500,
+            'nr_epochs': NR_EPOCHS,
             'batch_size': 64,
             'learning_rate': 0.01,
             'weight_decay': 0.01,
@@ -157,6 +161,7 @@ def main(
     start_time = time.time()                                            #train
     model.fit(X_train, y_train)
     train_time = time.time() - start_time
+
     if interpretable:
         test_predictions, weight_importances = model.predict(X_test, y_test, return_weights=True)
     else:
@@ -166,10 +171,61 @@ def main(
 
     inference_time = time.time() - start_time - train_time
 
+    # SHAP
+    def f(X):
+        return model.predict(X)
+
+    background = shap.sample(X_train, 10, args.seed)
+    rng = np.random.default_rng(args.seed)
+    idx = rng.choice(len(X_test), size=50, replace=False)
+    X_shap = X_test[idx]
+
+    explainer = shap.Explainer(f, background)
+    shap_exp = explainer(X_shap)
+
+    plt.figure()
+    shap.dependence_plot("tenure", shap_exp.values, X_shap,
+                         feature_names=attribute_names, interaction_index="auto", show=False)
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, "shap_dependence_gender.png"), dpi=200)
+    plt.close()
+
+    df_sv = pd.DataFrame(shap_exp.values, columns=attribute_names)
+    df_sv.insert(0, "row_id", idx)  # original row indices aus X_test
+    df_sv.to_csv(
+        os.path.join(output_dir, "shap_values.csv"),
+        index=False,
+    )
+
+    mean_abs = np.abs(shap_exp.values).mean(axis=0)
+    df_imp = pd.DataFrame({"feature": attribute_names, "mean_abs_shap": mean_abs}) \
+        .sort_values("mean_abs_shap", ascending=False)
+    df_imp.to_csv(
+        os.path.join(output_dir, "shap_importance.csv"),
+        index=False,
+    )
+
+    shap.summary_plot(shap_exp.values, X_shap, feature_names=attribute_names, show=False)
+    plt.tight_layout()
+    plt.savefig(
+        os.path.join(output_dir, "shap_summary.png"),
+        dpi=200,
+    )
+    plt.close()
+
+    # Bar Plot (global)
+    plt.figure()
+    plt.barh(df_imp["feature"].head(20)[::-1], df_imp["mean_abs_shap"].head(20)[::-1])
+    plt.tight_layout()
+    plt.savefig(
+        os.path.join(output_dir, "shap_bar_top20.png"),
+        dpi=200,
+    )
+    plt.close()
+
     test_predictions = test_predictions.cpu().numpy()
     train_predictions = train_predictions.cpu().numpy()
 
-    # Scores sichern
     test_scores = test_predictions.copy()
     train_scores = train_predictions.copy()
 
