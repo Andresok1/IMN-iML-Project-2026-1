@@ -10,7 +10,7 @@ import pandas as pd
 from main_experiment import main    
 from search_spaces import hpo_space_imn, hpo_space_tabresnet        
 from utils import get_dataset
-from tools import update_summary, global_json_calculation, generate_cluster_feature_plots
+from tools import update_summary, global_json_calculation, generate_cluster_feature_plots, save_test_data
 
 
 def objective(
@@ -213,6 +213,8 @@ def hpo_main(args):
 
         with open(os.path.join(output_directory, 'output_info.json'), 'w') as f:
             json.dump(output_info, f)
+
+    save_test_data(info_cluster, parent_dir, attribute_names)
 
     return summary_path, feature_list
 
