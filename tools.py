@@ -380,7 +380,7 @@ def global_json_calculation(path, feature_list):
 
     for data in results:
 
-        if data.get("dataset_name") == "Whole_Cluster":
+        if data.get("dataset_name") == "Cluster_whole":
             continue
 
         n = data["cluster_len"]
@@ -423,7 +423,7 @@ def global_json_calculation(path, feature_list):
     for feature in feature_ranking:
         feature_ranking[feature] /= total_samples
 
-    feature_ranking = dict(sorted(feature_ranking.items(), key=lambda x: x[1], reverse=True))
+    feature_ranking = dict(sorted(feature_ranking.items(), key=lambda  x: x[1], reverse=True))
 
     global_metrics = {
         "train_auroc" : weighted_train_auroc,
@@ -532,3 +532,37 @@ def generate_cluster_feature_plots(summary_path):
         title="Global Feature Ranking",
         save_path=save_path
     )
+
+
+def save_test_data(info_cluster, output_directory,attribute_names):
+
+
+    for cluster_id, info in info_cluster.items(): 
+           
+        X_test_cluster = info['X_test']
+        
+        y_test_cluster = info['y_test']
+
+        X_test_cluster.columns = attribute_names
+
+        y_test_cluster = pd.Series(y_test_cluster, name="churn")
+
+        X_test_cluster = X_test_cluster.reset_index(drop=True)
+        y_test_cluster = y_test_cluster.reset_index(drop=True)
+
+        test_data = pd.concat([X_test_cluster, y_test_cluster], axis=1)
+        
+        print(
+            f"Cluster {cluster_id} | "
+            f"indices duplicados X: {test_data.index.duplicated().any()}"
+        )
+
+        folder_name = f"cluster_{cluster_id}"
+        cluster_folder = os.path.join(output_directory, folder_name)
+        os.makedirs(cluster_folder, exist_ok=True)
+
+        csv_path = os.path.join(
+            cluster_folder,
+            f"test_data_cluster_{cluster_id}.csv")
+
+        test_data.to_csv(csv_path, index=False)
