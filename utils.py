@@ -593,6 +593,7 @@ def get_dataset(
         dataset_name = csv_path.stem
 
         if create_clusters:
+            if cluster_type ==1:
             # Gower
 
                 clusters, D= gower_hierarchical_clustering(X, y, categorical_cols, numerical_cols, plot_dendrogram=False)
