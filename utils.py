@@ -15,7 +15,7 @@ from sklearn.preprocessing import (
 )
 import torch
 import torch.nn as nn
-from tools import gower_hierarchical_clustering, pca_mixed_data_visualization
+from tools import gower_hierarchical_clustering, pca_mixed_data_visualization, split_dataset_by_clustering
 from pathlib import Path
 
 def prepare_data_for_cutmix(
@@ -544,7 +544,8 @@ def get_dataset(
     encoding_type: str = 'ordinal',
     hpo_tuning: bool = False,
     create_clusters: bool = False,
-    visualization: bool = False
+    visualization: bool = False,
+    cluster_type: int = 1,
 ) -> Dict:
     """Get/Preprocess the dataset.
 
@@ -594,7 +595,17 @@ def get_dataset(
         if create_clusters:
             # Gower
 
-            clusters, D= gower_hierarchical_clustering(X, y, categorical_cols, numerical_cols, plot_dendrogram=False)
+                clusters, D= gower_hierarchical_clustering(X, y, categorical_cols, numerical_cols, plot_dendrogram=False)
+            elif cluster_type ==2:
+                print("clustering by kmeans!")
+            #Kmeans
+                clusters, cluster_labels = split_dataset_by_clustering(
+                        X,
+                        y,
+                        n_clusters=4,
+                        random_state=seed,
+                    )
+
 
         else:
             clusters= {1: (X, y)}
@@ -638,7 +649,7 @@ def get_dataset(
             # Gower
 
             clusters, D= gower_hierarchical_clustering(X, y, categorical_cols, numerical_cols, plot_dendrogram=False)
-
+            
         else:
             clusters= {1: (X, y)}
 
