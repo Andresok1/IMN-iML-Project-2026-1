@@ -431,7 +431,7 @@ def global_json_calculation(path, feature_list):
         "train_balance_accuracy": weighted_train_bal_acc,
         "test_auroc": weighted_test_auroc,
         "test_accuracy": weighted_test_accuracy,
-        "test_balanced_accuracy": weighted_test_bal_acc,
+        "test_balance_accuracy": weighted_test_bal_acc,
         "test_f1": weighted_test_f1,
         "test_precision": weighted_test_precision,
         "test_recall": weighted_test_recall,
