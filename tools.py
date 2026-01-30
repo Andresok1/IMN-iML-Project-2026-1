@@ -566,3 +566,49 @@ def save_test_data(info_cluster, output_directory,attribute_names):
             f"test_data_cluster_{cluster_id}.csv")
 
         test_data.to_csv(csv_path, index=False)
+
+def split_dataset_by_clustering(
+    X: pd.DataFrame,
+    y: pd.Series,
+    n_clusters: int = 4,
+    random_state: int = 11,
+):
+    """
+    Split dataset into K clusters using KMeans (feature-based, unsupervised).
+
+    Returns:
+        Dict[int, Tuple[X_cluster, y_cluster]]
+    """
+
+    # Nur numerische Features fürs Clustering
+    X_num = X.select_dtypes(include=[np.number])
+
+    if X_num.shape[1] == 0:
+        raise ValueError("Clustering requires at least one numerical feature.")
+
+    # Skalieren (sehr wichtig)
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X_num)
+
+    # KMeans
+    kmeans = KMeans(
+        n_clusters=n_clusters,
+        random_state=random_state,
+        n_init=10,
+    )
+    cluster_labels = kmeans.fit_predict(X_scaled)
+
+    # Aufteilen
+    clustered_data = {}
+    for cluster_id in range(n_clusters):
+        X_sub = X[cluster_labels == cluster_id]
+        y_sub = y[cluster_labels == cluster_id]
+        # mask = cluster_labels == cluster_id
+        # clustered_data[cluster_id] = (
+        #     X.loc[mask].reset_index(drop=True),
+        #     y.loc[mask].reset_index(drop=True),
+        # )
+
+        clustered_data[cluster_id] = (X_sub,y_sub)
+
+    return clustered_data, cluster_labels
