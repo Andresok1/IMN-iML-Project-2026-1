@@ -76,7 +76,8 @@ def hpo_main(args):
         encode_categorical=True,
         hpo_tuning=args.hpo_tuning,
         create_clusters=args.create_clusters,
-        visualization= args.visualization
+        visualization= args.visualization,
+        cluster_type = args.cluster_type
     )
 
     timestamp_exists= False
@@ -325,6 +326,13 @@ if __name__ == "__main__":
         action='store_true',
         help='Whether to create clusters in the dataset',
     )
+    parser.add_argument(
+        '--cluster_type',
+        type=int,
+        default=1,
+        help='select cluster method (1=Gower, 2=Kmeans)',
+    )
+
     args = parser.parse_args()
 
     summary_path, feature_list = hpo_main(args)
