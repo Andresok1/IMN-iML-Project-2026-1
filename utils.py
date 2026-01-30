@@ -601,7 +601,7 @@ def get_dataset(
 
         clusters = {i+1: v for i, v in enumerate(clusters.values())}
 
-        pca_mixed_data_visualization(clusters,categorical_cols,numerical_cols, visualization=visualization, dim=3)
+        pca_mixed_data_visualization(clusters, categorical_cols, numerical_cols, visualization=visualization, dim=3)
 
     elif dataset_id ==1:
         
@@ -659,6 +659,7 @@ def get_dataset(
     for i in range(1, len(clusters) + 1):
         X_cluster, y_cluster = clusters[i]
         idx = X_cluster.index
+        
 
         train_idx, temp_idx = train_test_split(
             idx,
@@ -666,6 +667,7 @@ def get_dataset(
             random_state=seed,
             stratify=y.loc[idx],
         )
+        
 
         if hpo_tuning:
             valid_idx, test_idx = train_test_split(
@@ -677,13 +679,14 @@ def get_dataset(
         else:
             valid_idx = None
             test_idx = temp_idx
+        
+
 
         cluster_splits[i] = {
             "train": train_idx,
             "valid": valid_idx,
             "test": test_idx,
         }
-
 
     
     #Global reconstruction by index
@@ -697,27 +700,41 @@ def get_dataset(
         if hpo_tuning:
             global_valid_idx = global_valid_idx.union(splits["valid"])
 
+    print(f"whole data set training data:{len(global_train_idx)}")
+    print(f"whole data set test data:{len(global_test_idx)}")
+    print(f"whole data set valid data:{len(global_valid_idx)}")
 
-    global_info = preprocess_dataset(
-        X.loc[global_train_idx.union(global_test_idx if not hpo_tuning else global_valid_idx)],
-        y.loc[global_train_idx.union(global_test_idx if not hpo_tuning else global_valid_idx)],
-        encode_categorical=encode_categorical,
+
+    # global_info = preprocess_dataset(
+    #     X.loc[global_train_idx.union(global_test_idx if not hpo_tuning else global_valid_idx)],
+    #     y.loc[global_train_idx.union(global_test_idx if not hpo_tuning else global_valid_idx)],
+    #     X,
+    #     y,
+    #     encode_categorical=encode_categorical,
+    #     categorical_indicator=categorical_indicator,
+    #     attribute_names=attribute_names,
+    #     test_split_size=None,
+    #     seed=seed,
+    #     encoding_type=encoding_type,
+    #     hpo_tuning=hpo_tuning,
+    # )
+
+    ct = build_preprocessor(
+        X=X,
+        y=y.loc[global_train_idx],
         categorical_indicator=categorical_indicator,
-        attribute_names=attribute_names,
-        test_split_size=test_split_size,
-        seed=seed,
+        encode_categorical=encode_categorical,
         encoding_type=encoding_type,
-        hpo_tuning=False,
+        seed=seed,
     )
 
-    ct = global_info["column_transformer"]
 
-    X_processed = pd.DataFrame(
-        ct.transform(X),
-        index=X.index
-    )
+    ct.fit(X.loc[global_train_idx], y.loc[global_train_idx])
+
+    X_processed = pd.DataFrame(ct.transform(X), index=X.index)
 
     X_train_full = X_processed.loc[global_train_idx]
+    
     X_test_full  = X_processed.loc[global_test_idx]
     if hpo_tuning:
         X_valid_full = X_processed.loc[global_valid_idx]
@@ -728,26 +745,37 @@ def get_dataset(
     y_test_full  = y.loc[global_test_idx]
     if hpo_tuning:
         y_valid_full = y.loc[global_valid_idx]
+    
 
-    assert global_train_idx.isin(global_test_idx).sum() == 0
+    #verifies instance exclusivity in Test/Train/Valid
+    assert global_train_idx.isin(global_test_idx).sum() == 0 
+    assert global_train_idx.isin(global_valid_idx).sum() == 0 
+    assert global_test_idx.isin(global_valid_idx).sum() == 0 
+    assert (X_train_full.index == y_train_full.index).all()
+    len(global_train_idx) + len(global_test_idx) + len(global_valid_idx) == len(X)
+
+
 
     for i in clusters:
         splits = cluster_splits[i]
 
         info_cluster[i] = {
-            "X_train": X_train_full.loc[splits["train"]],
-            "y_train": y_train_full.loc[splits["train"]].to_numpy(),
-            "X_test":  X_test_full.loc[splits["test"]],
+            "X_train": X_processed.loc[splits["train"]],
+            "y_train": y.loc[splits["train"]].to_numpy(),
+            "X_test":  X_processed.loc[splits["test"]],
             "y_test":  y_test_full.loc[splits["test"]].to_numpy(),
-            "categorical_indicator": global_info["categorical_indicator"],
-            "attribute_names": global_info["attribute_names"],
+            "categorical_indicator": categorical_indicator,
+            "attribute_names": attribute_names,
             "cluster_len": len(clusters[i][0]),
             "dataset_name": f"Cluster_{i}",
         }
 
         if hpo_tuning:
-            info_cluster[i]["X_valid"] = X_valid_full.loc[splits["valid"]]
-            info_cluster[i]["y_valid"] = y_valid_full.loc[splits["valid"]].to_numpy()
+            info_cluster[i]["X_valid"] = X_processed.loc[splits["valid"]]
+            info_cluster[i]["y_valid"] = y.loc[splits["valid"]].to_numpy()
+
+        print(f"X size for cluster{i}:{info_cluster[i]['X_train']}")
+
 
 
     info_cluster["whole"] = {
@@ -755,8 +783,8 @@ def get_dataset(
         "y_train": y_train_full.to_numpy(),
         "X_test":  X_test_full,
         "y_test":  y_test_full.to_numpy(),
-        "categorical_indicator": global_info["categorical_indicator"],
-        "attribute_names": global_info["attribute_names"],
+        "categorical_indicator": categorical_indicator,
+        "attribute_names": attribute_names,
         "cluster_len": len(X_train_full) + len(X_test_full) + (len(X_valid_full) if hpo_tuning else 0),
         "dataset_name": "Cluster_whole",
     }
@@ -765,7 +793,6 @@ def get_dataset(
         info_cluster["whole"]["X_valid"] = X_valid_full
         info_cluster["whole"]["y_valid"] = y_valid_full.to_numpy()
     
-
     return info_cluster, attribute_names, categorical_indicator
 
 
@@ -830,3 +857,73 @@ def make_residual_block(
         A residual block.
     """
     return BasicBlock(in_features, output_features, dropout_rate)
+
+
+
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import StandardScaler, OrdinalEncoder, OneHotEncoder
+from sklearn.preprocessing import LabelEncoder
+
+def build_preprocessor(
+    X: pd.DataFrame,
+    y: pd.Series,
+    categorical_indicator: list,
+    encode_categorical: bool,
+    encoding_type: str,
+    seed: int,
+):
+    """
+    Build a ColumnTransformer for mixed tabular data.
+    Does NOT fit or transform data.
+    """
+
+    numerical_features = [
+        i for i, is_cat in enumerate(categorical_indicator) if not is_cat
+    ]
+    categorical_features = [
+        i for i, is_cat in enumerate(categorical_indicator) if is_cat
+    ]
+
+    dataset_preprocessors = []
+
+    if len(numerical_features) > 0:
+        dataset_preprocessors.append(
+            ("numerical", StandardScaler(), numerical_features)
+        )
+
+    if len(categorical_features) > 0 and encode_categorical:
+        if y.nunique() > 2:
+            if encoding_type == "ordinal":
+                categorical_preprocessor = (
+                    "categorical",
+                    OrdinalEncoder(
+                        handle_unknown="use_encoded_value",
+                        unknown_value=-1,
+                    ),
+                    categorical_features,
+                )
+            else:
+                categorical_preprocessor = (
+                    "categorical",
+                    OneHotEncoder(
+                        handle_unknown="ignore",
+                        sparse=False,
+                        drop="if_binary",
+                    ),
+                    categorical_features,
+                )
+        else:
+            categorical_preprocessor = (
+                "categorical",
+                TargetEncoder(random_state=seed),
+                categorical_features,
+            )
+
+        dataset_preprocessors.append(categorical_preprocessor)
+
+    column_transformer = ColumnTransformer(
+        dataset_preprocessors,
+        remainder="passthrough",
+    )
+
+    return column_transformer
