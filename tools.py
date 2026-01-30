@@ -8,7 +8,7 @@ import json
 
 from sklearn.discriminant_analysis import StandardScaler
 from sklearn.metrics import silhouette_score
-from sklearn.cluster import AgglomerativeClustering
+from sklearn.cluster import AgglomerativeClustering, KMeans
 from scipy.spatial.distance import squareform
 
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
