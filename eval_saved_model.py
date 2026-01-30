@@ -55,7 +55,6 @@ def retest(args):
     df = pd.read_csv(test_file)
     X_test = df.drop(columns=["churn"]).to_numpy().astype(np.float32)
 
-    print("cluster_path", cluster_path_1)
 
     # Für predict reicht das als Platzhalter
     categorical_indicator = [False] * X_test.shape[1]
@@ -136,7 +135,6 @@ def retest(args):
             "test_precision": float(test_precision),
         }
 
-        print("BROOO",output_info_retest)
         Summary_retest.append(output_info_retest)
         
         pd.DataFrame({"y_true": y_test, "y_prob": probs, "y_pred": test_predicitions}).to_csv(
