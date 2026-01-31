@@ -27,7 +27,7 @@ The main arguments for `hpo_main_experiment.py` are:
 - `--augmentation_probability`: The probability with which data augmentation will be applied.
 - `--scheduler_t_mult`: Number of restarts for the learning rate scheduler.
 - `--seed`: The random seed to generate reproducible results.
-- `--dataset_id`: The OpenML dataset id.
+- `--dataset_id`: The dataset to open (0=Churn dataset).
 - `--test_split_size`: The fraction of total data that will correspond to the test set.
 - `--nr_restarts`: Number of restarts for the learning rate scheduler.
 - `--output_dir`: Directory where to store results.
@@ -36,28 +36,33 @@ The main arguments for `hpo_main_experiment.py` are:
 - `--hpo_tuning`: Whether to enable hyperparameter optimization. 
 - `--nr_trials`: The number of trials when performing hyperparameter optimization. 
 - `--disable_wandb`: Whether to disable wandb logging. 
+- `--create_clusters`: Whether to create clusters or just consider the whole dataset.
+- `--visualization`: Whether to generate a visualization of your dataset/cluster set.
+- `--cluster_type`: Whether to cluster via Gower or Kmeans. 
 
 
 
 **A minimal example of running IMN**:
 
 ```
-python hpo_main_experiment.py --hpo_tuning --n_trials 3 --disable_wandb --interpretable --dataset_id 1590
+python hpo_main_experiment.py --hpo_tuning --n_trials 3 --seed 0 --disable_wandb --interpretable --dataset_id 0  --create_clusters --cluster_type 1
 
 ```
-
 
 ## Plots
 
-The plots that are included in our paper were generated from the functions in the module `plots/comparison.py`.
+The plots that are included in our paper were generated from the functions in the module `tools.py`.
 The plots expect the following result folder structure:
 
 ```
-├── results_folder
-│   ├── method_name
-│   │   ├── dataset_id
-│   │   │   ├── seed
+├── inn (results folder)
+│   ├── dataset_id-date_timestamp
+│   │   ├── seed
+│   │   │   ├── cluster_NAME
 │   │   │   │   ├── output_info.json
+│   │   │   │   ├── top_features.png
+│   │   │   ├── cluster_global_ranking_mean.png
+
 ```
 
 ## Citation
