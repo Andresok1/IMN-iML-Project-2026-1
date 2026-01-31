@@ -14,6 +14,7 @@
                     "--interpretable",
                     "--dataset_id", "0",
                     "--create_clusters",
+                    "--cluster_type", "2"
                 ]
         }
     ]
