@@ -112,10 +112,10 @@ def main(
 
             for index in oversampled_indices:                       #oversampled instances added 
                 examples_train.append(X_train[index])
-                labels_train.append(y_train[index])
-                # labels_train.append(
-                #     y_train.iloc[index] if hasattr(y_train, "iloc") else y_train[index]
-                # )
+                # labels_train.append(y_train[index])
+                labels_train.append(
+                    y_train.iloc[index] if hasattr(y_train, "iloc") else y_train[index]
+                )
         else:
             examples_train.extend(X_train[dataset_classes[i]])      
             # labels_train.extend(y_train.iloc[dataset_classes[i]])
