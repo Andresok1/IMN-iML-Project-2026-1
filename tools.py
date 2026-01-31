@@ -380,7 +380,7 @@ def global_json_calculation(path, feature_list):
 
     for data in results:
 
-        if data.get("dataset_name") == "Cluster_whole":
+        if data.get("dataset_name") == "cluster_whole":
             continue
 
         n = data["cluster_len"]
@@ -441,9 +441,9 @@ def global_json_calculation(path, feature_list):
     }
     
 
-    results.append({"cluster_global_mean": global_metrics})
+    results.append({"cluster_mean": global_metrics})
     
-    results.append({"cluster_global_ranking": feature_ranking})
+    results.append({"cluster_mean_ranking": feature_ranking})
 
     with open(path, "w") as f:
         json.dump(results, f, indent=2)
@@ -452,7 +452,7 @@ def global_json_calculation(path, feature_list):
 
 def show_clusters(clusters):
     for i, (X_data, y_data) in clusters.items():
-        cluster_size = len(X_data)  # El tamaño del cluster es el número de filas en X_data
+        cluster_size = len(X_data)  
         print(f"Cluster size {i}: {cluster_size}")
 
 
@@ -552,10 +552,6 @@ def save_test_data(info_cluster, output_directory,attribute_names):
 
         test_data = pd.concat([X_test_cluster, y_test_cluster], axis=1)
         
-        print(
-            f"Cluster {cluster_id} | "
-            f"indices duplicados X: {test_data.index.duplicated().any()}"
-        )
 
         folder_name = f"cluster_{cluster_id}"
         cluster_folder = os.path.join(output_directory, folder_name)
