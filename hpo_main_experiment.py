@@ -69,7 +69,7 @@ def objective(
 def hpo_main(args):
     """The main function for hyperparameter optimization."""
 
-    info_cluster, feature_list, categorical_indicator = get_dataset(
+    info_cluster, attribute_names, categorical_indicator = get_dataset(
         args.dataset_id,
         test_split_size=args.test_split_size,
         seed=args.seed,
@@ -84,11 +84,13 @@ def hpo_main(args):
 
     for cluster_id, info in info_cluster.items():
 
-        dataset_name = info['dataset_name']
+        if cluster_id == 'cluster_whole':
+            dataset_name = "cluster_whole"  
+        else:
+            dataset_name = f"cluster_{cluster_id}"
 
         print(f"****{dataset_name}*****")
 
-        attribute_names = info['attribute_names']
 
         X_train = info['X_train']
         X_test = info['X_test']
@@ -105,7 +107,6 @@ def hpo_main(args):
             X_valid, y_valid = None, None
         
 
-        categorical_indicator = info['categorical_indicator']
         model_name = 'inn' if args.interpretable else 'tabresnet'
 
         if not timestamp_exists:
@@ -145,7 +146,7 @@ def hpo_main(args):
             if args.interpretable:
                 study.enqueue_trial(
                     {
-                        'nr_epochs': 100,
+                        'nr_epochs': 150,
                         'batch_size': 64,
                         'learning_rate': 0.01,
                         'weight_decay': 0.01,
@@ -156,7 +157,7 @@ def hpo_main(args):
             else:
                 study.enqueue_trial(
                     {
-                        'nr_epochs': 100,
+                        'nr_epochs': 150,
                         'batch_size': 64,
                         'learning_rate': 0.01,
                         'weight_decay': 0.01,
@@ -217,7 +218,7 @@ def hpo_main(args):
 
     save_test_data(info_cluster, parent_dir, attribute_names)
 
-    return summary_path, feature_list
+    return summary_path, attribute_names
 
 
             
