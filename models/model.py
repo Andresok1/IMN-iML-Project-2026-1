@@ -16,6 +16,9 @@ from utils import augment_data
 
 
 class Classifier:
+    ###################
+    #IML: This class was modified to manage the unbalanced classification task via pos_weight in BCEWithLogitsLoss
+    ###################
 
     def __init__(
         self,
@@ -44,9 +47,9 @@ class Classifier:
         super(Classifier, self).__init__()
 
         self.disable_wandb = disable_wandb
-        algorithm_backbone = {                                      #select model architecture
-            'tabresnet': TabResNet,                                 #   no interpretable model
-            'inn': HyperNet,                                        #   interpretable model (with weights)         
+        algorithm_backbone = {                                      
+            'tabresnet': TabResNet,                                 
+            'inn': HyperNet,                                                
         }
         self.nr_classes = network_configuration['nr_classes'] \
             if network_configuration['nr_classes'] != 1 else 2
@@ -56,19 +59,19 @@ class Classifier:
         else:
             self.interpretable = False
 
-        self.model = algorithm_backbone[model_name](**network_configuration)        #model initialization
+        self.model = algorithm_backbone[model_name](**network_configuration)        
         self.model = self.model.to(device)
         self.args = args
         self.dev = device
         self.mode = args.mode
-        self.numerical_features = [i for i in range(len(categorical_indicator)) if not categorical_indicator[i]]    #saves the numerical feature
+        self.numerical_features = [i for i in range(len(categorical_indicator)) if not categorical_indicator[i]]    
         self.attribute_names = attribute_names
         self.ensemble_snapshots = []
         self.sigmoid_act_func = torch.nn.Sigmoid()
         self.softmax_act_func = torch.nn.Softmax(dim=1)
         self.output_directory = output_directory
 
-    def fit(                                                #model training
+    def fit(                                               
         self,
         X: Union[List, np.ndarray, pd.DataFrame],
         y: Union[List, np.ndarray, pd.DataFrame],
@@ -82,7 +85,7 @@ class Classifier:
         Returns:
             self: The fitted classifier.
         """
-        if isinstance(X, pd.DataFrame):                 #  convert input data to numpy array or array
+        if isinstance(X, pd.DataFrame):                 
             X = X.to_numpy()
         elif isinstance(X, list):
             X = np.array(X)
@@ -101,17 +104,16 @@ class Classifier:
         nr_restarts = self.args.nr_restarts
         weight_norm = self.args.weight_norm
 
-        X_train = torch.tensor(X).float()               #convert input data to tensor
+        X_train = torch.tensor(X).float()               
         y_train = torch.tensor(y)
         if self.mode == 'classification':
             y_train = y_train.float() if self.nr_classes == 2 else y_train.long()
         else:
             y_train = y_train.float()
 
-        X_train = X_train.to(self.dev)                  #move data to device (cpu or gpu)
+        X_train = X_train.to(self.dev)                  
         y_train = y_train.to(self.dev)
 
-        # Create dataloader for training
         train_dataset = torch.utils.data.TensorDataset(
             X_train,
             y_train,
@@ -119,33 +121,30 @@ class Classifier:
 
         train_loader = torch.utils.data.DataLoader(
             train_dataset,
-            batch_size=batch_size,                  #subset? (TODO)
+            batch_size=batch_size,                  
             shuffle=True,
-            drop_last=True                          #drop last incomplete batch (TODO)
+            drop_last=True                          
         )
 
-        # calculate the initial budget given the total number of iterations,
-        # the number of restarts and the budget multiplier
-        T_0: int = max(                                                           #number of steps in the first restart
-            ((nr_epochs * len(train_loader)) * (scheduler_t_mult - 1)) //         #(nr_epochs * len(train_loader))= (epochs x batches) total steps in training
+        T_0: int = max(                                                           
+            ((nr_epochs * len(train_loader)) * (scheduler_t_mult - 1)) //        
              (scheduler_t_mult ** nr_restarts - 1),
             1,
         )
 
-        # Train the hypernetwork
-        optimizer = torch.optim.Adam(                           #optimizer initialization (update model parameters)
+        
+        optimizer = torch.optim.Adam(                           
             self.model.parameters(),
             lr=learning_rate,
             weight_decay=weight_decay,
         )
 
-        # warmup the learning rate for 5 epochs
         def warmup(current_step: int):
             return float(current_step / (5 * len(train_loader)))
 
         scheduler1 = LambdaLR(optimizer, lr_lambda=warmup)
         scheduler2 = CosineAnnealingWarmRestarts(optimizer, T_0, scheduler_t_mult)
-        scheduler = SequentialLR(                                         #control learning rate schedule, after warmup use cosine annealing with restarts
+        scheduler = SequentialLR(                                         
             optimizer,
             schedulers=[scheduler1, scheduler2],
             milestones=[5 * len(train_loader)],
@@ -160,7 +159,7 @@ class Classifier:
 
                 pos_weight = torch.tensor([float(n_neg / n_pos)])
                 criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
-                # criterion = torch.nn.BCEWithLogitsLoss()
+
         else:
             criterion = torch.nn.MSELoss()
 
@@ -286,7 +285,7 @@ class Classifier:
             predictions, weights: The predicted output for the given input data and
                 the importance weights if requested.
         """
-        # check if X_test is a DataFrame
+        
         if isinstance(X_test, pd.DataFrame):
             X_test = X_test.to_numpy()
         elif isinstance(X_test, list):
@@ -344,16 +343,13 @@ class Classifier:
             weights = torch.squeeze(weights)
             if self.mode == 'classification' and only_correct and y_test is not None:
                 if self.nr_classes == 2:
-                    # threshold in case of binary classification
+                    
                     act_predictions = (predictions > 0.5).int()
                 else:
                     act_predictions = torch.argmax(predictions, dim=1)
 
-                correct_predictions_mask = act_predictions == y_test                            #check prediction correctness
-
+                correct_predictions_mask = act_predictions == y_test                          
                 if self.nr_classes > 2:
-                    # For multi-class classification, select weights for the predicted class
-                    # We gather along the last dimension (classes) for each correctly predicted example
                     class_indices = (
                         act_predictions[correct_predictions_mask]
                         .unsqueeze(-1)
@@ -366,7 +362,6 @@ class Classifier:
                         class_indices
                     ).squeeze(2)
                 else:
-                    # For binary classification, select all weights for correctly predicted examples
                     weights = weights[correct_predictions_mask]
 
         if self.interpretable:
