@@ -29,6 +29,9 @@ def main(
     output_directory: str,
     cluster_len: float,
 ) -> Dict:
+    ###################
+    #IML: This function was modified to include more parformance metrics
+    ###################
     """Main entry point for the experiment.
 
     Args:
@@ -41,6 +44,8 @@ def main(
         categorical_indicator: The categorical indicator for the features.
         attribute_names: The feature names.
         dataset_name: The name of the dataset.
+        output_directory: The output directory for the experiment.
+        cluster_len: The length of the cluster (if applicable).
 
     Returns:
         output_info: A dictionary with the main results from the experiment.
@@ -76,33 +81,32 @@ def main(
     unique_classes, class_counts = np.unique(y_train, axis=0, return_counts=True)
     nr_classes = len(unique_classes)
 
-    # separate into classes
     dataset_classes = {}
     for i in range(nr_classes):                      
         dataset_classes[i] = []     
 
-    for index, label in enumerate(y_train):             #which examples belong to which class (amount of instances per class)
+    for index, label in enumerate(y_train):             
         dataset_classes[label].append(index)
 
     majority_class_nr = -1
-    for i in range(nr_classes):                             #find the size of the majority class
+    for i in range(nr_classes):                             
         if len(dataset_classes[i]) > majority_class_nr:
             majority_class_nr = len(dataset_classes[i])
 
     examples_train = []
     labels_train = []
-    # oversample minority classes
+
     for i in range(nr_classes):                             
         nr_instances_class = len(dataset_classes[i])
         if nr_instances_class < majority_class_nr:
-            # oversample
-            oversampled_indices = np.random.choice(             #oversampling to balance classes
+            
+            oversampled_indices = np.random.choice(            
                 dataset_classes[i],
                 majority_class_nr - nr_instances_class,
                 replace=True,
             )
-            examples_train.extend(X_train[dataset_classes[i]])      #original instances added
-            # labels_train.extend(y_train.iloc[dataset_classes[i]])
+            examples_train.extend(X_train[dataset_classes[i]])      
+            
             labels_train.extend(
                 y_train.iloc[dataset_classes[i]].tolist()
                 if hasattr(y_train, "iloc")
@@ -110,22 +114,22 @@ def main(
             )
 
 
-            for index in oversampled_indices:                       #oversampled instances added 
+            for index in oversampled_indices:                       
                 examples_train.append(X_train[index])
-                # labels_train.append(y_train[index])
+                
                 labels_train.append(
                     y_train.iloc[index] if hasattr(y_train, "iloc") else y_train[index]
                 )
         else:
             examples_train.extend(X_train[dataset_classes[i]])      
-            # labels_train.extend(y_train.iloc[dataset_classes[i]])
+            
             labels_train.extend(
                 y_train.iloc[dataset_classes[i]].tolist()
                 if hasattr(y_train, "iloc")
                 else y_train[dataset_classes[i]].tolist()
             )
 
-    network_configuration = {                                   #network configuration
+    network_configuration = {                                  
         'nr_features': nr_features,
         'nr_classes': nr_classes if nr_classes > 2 else 1,
         'nr_blocks': args.nr_blocks,
@@ -136,7 +140,7 @@ def main(
 
     interpretable = args.interpretable
     model_name = 'inn' if interpretable else 'tabresnet'
-    if not args.disable_wandb:                #config wandb logging, do not affect training
+    if not args.disable_wandb:                
         wandb.init(
             project='INN',
             config=args,
@@ -169,9 +173,7 @@ def main(
     model.fit(X_train, y_train)
     train_time = time.time() - start_time
     if interpretable:
-        test_predictions, weight_importances = model.predict(X_test, y_test, return_weights=True)           #weights for feature importance per cluster
-
-        #print("weights.size:", weight_importances.size())
+        test_predictions, weight_importances = model.predict(X_test, y_test, return_weights=True)        
 
     else:
         test_predictions = model.predict(X_test, y_test)
@@ -180,17 +182,17 @@ def main(
 
     inference_time = time.time() - start_time - train_time
 
-    test_predictions = test_predictions.cpu().numpy()               #tensor to numpy
+    test_predictions = test_predictions.cpu().numpy()               
     train_predictions = train_predictions.cpu().numpy()
 
     if interpretable:
         weight_importances = weight_importances.cpu().detach().numpy()
 
-    # from series to list
+  
     y_test = y_test.tolist()
     y_train = y_train.tolist()
 
-    if args.mode == 'classification':                   #si es clasificacion calcula auroc (para train/test) y accuracy
+    if args.mode == 'classification':                   
         test_auroc = roc_auc_score(
             y_test,
             test_predictions,
@@ -203,15 +205,15 @@ def main(
         )
 
         # threshold the predictions if the model is binary
-        if nr_classes == 2:                                             #binary classification
+        if nr_classes == 2:                                             
             # threshold the predictions if the model is binary
-            test_predictions = (test_predictions > 0.5).astype(int)     #classification threshold 0.5
+            test_predictions = (test_predictions > 0.5).astype(int)    
             train_predictions = (train_predictions > 0.5).astype(int)
         else:
             test_predictions = np.argmax(test_predictions, axis=1)
             train_predictions = np.argmax(train_predictions, axis=1)
 
-        test_accuracy = accuracy_score(y_test, test_predictions)        #accuracy via sklearn
+        test_accuracy = accuracy_score(y_test, test_predictions)        
         train_accuracy = accuracy_score(y_train, train_predictions)
 
         test_balance_accuracy = balanced_accuracy_score(y_test,test_predictions)
@@ -223,18 +225,17 @@ def main(
         test_recall = recall_score(y_test, test_predictions)
 
 
-        if not args.disable_wandb:                                      #logging en wandb
+        if not args.disable_wandb:                                      
             wandb.run.summary["Test:accuracy"] = test_accuracy
             wandb.run.summary["Test:auroc"] = test_auroc
             wandb.run.summary["Train:accuracy"] = train_accuracy
             wandb.run.summary["Train:auroc"] = train_auroc
-    else:                                                              #if regression then mse calculation
+    else:                                                              
         test_mse = mean_squared_error(y_test, test_predictions)
         train_mse = mean_squared_error(y_train, train_predictions)
-        if not args.disable_wandb:                                    #logging en wandb                         
+        if not args.disable_wandb:                                                           
             wandb.run.summary["Test:mse"] = test_mse
             wandb.run.summary["Train:mse"] = train_mse
-
     if args.mode == 'classification':
         output_info = {
             'dataset_name': dataset_name,
@@ -261,13 +262,12 @@ def main(
 
     if interpretable:
         # remove the above line if you need the per example importance
-        # average the importance over the examples
         weight_importances = np.mean(weight_importances, axis=0)
 
-        sorted_idx = np.argsort(weight_importances)[::-1]                   #orders indices of feature importances from high to low
+        sorted_idx = np.argsort(weight_importances)[::-1]                   
         top_features = [attribute_names[i] for i in sorted_idx]
 
-        output_info['top_features'] = top_features                          #save top features and their weights
+        output_info['top_features'] = top_features                         
         output_info['top_features_weights'] = weight_importances[sorted_idx].tolist()
         if not args.disable_wandb:
             wandb.run.summary["Top_features"] = top_features
