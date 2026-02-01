@@ -10,7 +10,7 @@ import pandas as pd
 from main_experiment import main    
 from search_spaces import hpo_space_imn, hpo_space_tabresnet        
 from utils import get_dataset
-from tools import update_summary, global_json_calculation, generate_cluster_feature_plots, save_test_data
+from tools import update_summary, global_json_calculation, generate_cluster_feature_plots, save_test_train_data
 
 
 def objective(
@@ -67,6 +67,16 @@ def objective(
 
 
 def hpo_main(args):
+    ###################
+    #IML: This function was modified to include more parformance metrics, control the output_info saving, and cluster handling.
+    ###################
+    '''Manage clusters, save output info and summary update, handle output directories and hpo tuning
+    Args:
+        args: The arguments for the experiment.
+    Returns:   
+        summary_path: The path to the summary file.
+        attribute_names: The feature names.
+    '''
     """The main function for hyperparameter optimization."""
 
     info_cluster, attribute_names, categorical_indicator = get_dataset(
@@ -106,6 +116,15 @@ def hpo_main(args):
         else:
             X_valid, y_valid = None, None
         
+        positive_train = len(y_train[y_train == 1])
+        positive_test = len(y_test[y_test == 1])
+        if args.hpo_tuning:
+            positive_valid = len(y_valid[y_valid == 1])
+
+        negative_train = len(y_train[y_train == 0])
+        negative_test = len(y_test[y_test == 0])
+        if args.hpo_tuning:
+            negative_valid = len(y_valid[y_valid == 0])
 
         model_name = 'inn' if args.interpretable else 'tabresnet'
 
@@ -146,7 +165,7 @@ def hpo_main(args):
             if args.interpretable:
                 study.enqueue_trial(
                     {
-                        'nr_epochs': 150,
+                        'nr_epochs':10,
                         'batch_size': 64,
                         'learning_rate': 0.01,
                         'weight_decay': 0.01,
@@ -157,7 +176,7 @@ def hpo_main(args):
             else:
                 study.enqueue_trial(
                     {
-                        'nr_epochs': 150,
+                        'nr_epochs': 10,
                         'batch_size': 64,
                         'learning_rate': 0.01,
                         'weight_decay': 0.01,
@@ -190,7 +209,6 @@ def hpo_main(args):
             trial_df = study.trials_dataframe(attrs=('number', 'value', 'params', 'state'))
             trial_df.to_csv(os.path.join(output_directory, 'trials.csv'), index=False)
 
-        # concatenate train and validation
         X_train = pd.concat([X_train, X_valid], axis=0)
         y_train = np.concatenate([y_train, y_valid], axis=0)
 
@@ -208,6 +226,14 @@ def hpo_main(args):
             cluster_len,
         )
 
+        output_info['positive_train'] = positive_train
+        output_info['positive_test'] = positive_test
+        output_info['positive_valid'] = positive_valid if args.hpo_tuning else None
+
+        output_info['negative_train'] = negative_train
+        output_info['negative_test'] = negative_test   
+        output_info['negative_valid'] = negative_valid if args.hpo_tuning else None
+
         parent_dir = os.path.dirname(output_directory)
         summary_path = os.path.join(parent_dir, 'summary.json')
         
@@ -216,7 +242,7 @@ def hpo_main(args):
         with open(os.path.join(output_directory, 'output_info.json'), 'w') as f:
             json.dump(output_info, f)
 
-    save_test_data(info_cluster, parent_dir, attribute_names)
+    save_test_train_data(info_cluster, parent_dir, attribute_names)
 
     return summary_path, attribute_names
 
