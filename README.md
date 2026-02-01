@@ -45,7 +45,11 @@ The main arguments for `hpo_main_experiment.py` are:
 **A minimal example of running IMN**:
 
 ```
+Experiment 1:
 python hpo_main_experiment.py --hpo_tuning --n_trials 3 --seed 0 --disable_wandb --interpretable --dataset_id 0  --create_clusters --cluster_type 1
+
+Experiment 2:
+python eval_saved_model.py --model_dir C:\Users\Andres\Documents\Repos\iML\Project\IMN\inn\dataset_0_2026-01-31_15-19-07\seed_0\cluster_whole --target_column churn
 
 ```
 
