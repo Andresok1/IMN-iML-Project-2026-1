@@ -547,6 +547,9 @@ def get_dataset(
     visualization: bool = False,
     cluster_type: int = 1,
 ) -> Dict:
+    ###################
+    #IML: This function was modified to include custom datasets and clustering options
+    ###################
     """Get/Preprocess the dataset.
 
     Args:
@@ -557,11 +560,16 @@ def get_dataset(
         encoding_type: The encoding type for the categorical features. Whether it should be
             'ordinal' or 'one-hot'.
         hpo_tuning: Whether to create a validation set for hyperparameter optimization.
+        create_clusters: wheter to create clusters from the dataset
+        visualization: wheter to visualize the clusters with pca (2 or 3d)
+        cluster_type: the type of clustering to use (1: Gower, 2: Kmeans)
 
     Returns:
         info_dict: A dictionary with the preprocessed data and additional information
+        atribute_names: The names of the features.
+        categorical_indicator: An indicator for differentiating between categorical
     """
-    # Get the data
+    
     if dataset_id == 0:
         BASE_DIR = Path(__file__).resolve().parent
         DATASETS_DIR = BASE_DIR / "datasets"
@@ -572,7 +580,7 @@ def get_dataset(
         X = dataset.drop(columns=["Churn"])
         y = dataset["Churn"].map({"No": 0, "Yes": 1}).astype(int)
 
-        attribute_names = X.columns.tolist()                                                #feature names
+        attribute_names = X.columns.tolist()                               
         numerical_cols = [
             "tenure",
             "MonthlyCharges",
@@ -588,7 +596,7 @@ def get_dataset(
 
         categorical_cols = [col for col in X.columns if col not in numerical_cols]
         
-        categorical_indicator = [col in categorical_cols for col in X.columns]                  #which columns are categorical
+        categorical_indicator = [col in categorical_cols for col in X.columns]
 
         dataset_name = csv_path.stem
 
@@ -596,7 +604,7 @@ def get_dataset(
             if cluster_type ==1:
             # Gower
 
-                clusters, D= gower_hierarchical_clustering(X, y, categorical_cols, numerical_cols, plot_dendrogram=False)
+                clusters = gower_hierarchical_clustering(X, y, categorical_cols, numerical_cols, plot_dendrogram=False)
             elif cluster_type ==2:
                 print("clustering by kmeans!")
             #Kmeans
@@ -606,7 +614,6 @@ def get_dataset(
                         n_clusters=4,
                         random_state=seed,
                     )
-
 
         else:
             clusters= {1: (X, y)}
@@ -640,16 +647,15 @@ def get_dataset(
 
         categorical_cols = [col for col in X.columns if col not in numerical_cols]
         
-        categorical_indicator = [col in categorical_cols for col in X.columns]                  #which columns are categorical
+        categorical_indicator = [col in categorical_cols for col in X.columns]         
         
-        attribute_names = X.columns.tolist()                                                #feature names
-
+        attribute_names = X.columns.tolist()                                                
         dataset_name = csv_path.stem
 
         if create_clusters:
             # Gower
 
-            clusters, D= gower_hierarchical_clustering(X, y, categorical_cols, numerical_cols, plot_dendrogram=False)
+            clusters = gower_hierarchical_clustering(X, y, categorical_cols, numerical_cols, plot_dendrogram=False)
             
         else:
             clusters= {1: (X, y)}
@@ -666,41 +672,21 @@ def get_dataset(
             target=dataset.default_target_attribute,
        )
     
-    info_cluster= {}
-    cluster_splits = {}
-    for i in range(1, len(clusters) + 1):
-        X_cluster, y_cluster = clusters[i]
-        idx = X_cluster.index
-        
-
-        train_idx, temp_idx = train_test_split(
-            idx,
-            test_size=test_split_size,
-            random_state=seed,
-            stratify=y.loc[idx],
-        )
-        
-
-        if hpo_tuning:
-            valid_idx, test_idx = train_test_split(
-                temp_idx,
-                test_size=0.5,
-                random_state=seed,
-                stratify=y.loc[temp_idx],
-            )
-        else:
-            valid_idx = None
-            test_idx = temp_idx
-        
-
-
-        cluster_splits[i] = {
-            "train": train_idx,
-            "valid": valid_idx,
-            "test": test_idx,
-        }
-
     
+    global_info, ct, cluster_splits = preprocess_dataset_after_split(
+        X =X,
+        y= y,
+        clusters=clusters,
+        encode_categorical=encode_categorical,
+        categorical_indicator=categorical_indicator,
+        attribute_names=attribute_names,
+        test_split_size=None,
+        seed=seed,
+        encoding_type=encoding_type,
+        hpo_tuning=hpo_tuning,
+
+    )
+
     #Global reconstruction by index
     global_train_idx = pd.Index([])
     global_test_idx = pd.Index([])
@@ -712,46 +698,15 @@ def get_dataset(
         if hpo_tuning:
             global_valid_idx = global_valid_idx.union(splits["valid"])
 
-    print(f"whole data set training data:{len(global_train_idx)}")
-    print(f"whole data set test data:{len(global_test_idx)}")
-    print(f"whole data set valid data:{len(global_valid_idx)}")
-
-
-    # global_info = preprocess_dataset(
-    #     X.loc[global_train_idx.union(global_test_idx if not hpo_tuning else global_valid_idx)],
-    #     y.loc[global_train_idx.union(global_test_idx if not hpo_tuning else global_valid_idx)],
-    #     X,
-    #     y,
-    #     encode_categorical=encode_categorical,
-    #     categorical_indicator=categorical_indicator,
-    #     attribute_names=attribute_names,
-    #     test_split_size=None,
-    #     seed=seed,
-    #     encoding_type=encoding_type,
-    #     hpo_tuning=hpo_tuning,
-    # )
-
-    ct = build_preprocessor(
-        X=X,
-        y=y.loc[global_train_idx],
-        categorical_indicator=categorical_indicator,
-        encode_categorical=encode_categorical,
-        encoding_type=encoding_type,
-        seed=seed,
-    )
-
 
     ct.fit(X.loc[global_train_idx], y.loc[global_train_idx])
 
     X_processed = pd.DataFrame(ct.transform(X), index=X.index)
 
     X_train_full = X_processed.loc[global_train_idx]
-    
     X_test_full  = X_processed.loc[global_test_idx]
     if hpo_tuning:
         X_valid_full = X_processed.loc[global_valid_idx]
-
-
 
     y_train_full = y.loc[global_train_idx]
     y_test_full  = y.loc[global_test_idx]
@@ -759,38 +714,7 @@ def get_dataset(
         y_valid_full = y.loc[global_valid_idx]
     
 
-    #verifies instance exclusivity in Test/Train/Valid
-    assert global_train_idx.isin(global_test_idx).sum() == 0 
-    assert global_train_idx.isin(global_valid_idx).sum() == 0 
-    assert global_test_idx.isin(global_valid_idx).sum() == 0 
-    assert (X_train_full.index == y_train_full.index).all()
-    len(global_train_idx) + len(global_test_idx) + len(global_valid_idx) == len(X)
-
-
-
-    for i in clusters:
-        splits = cluster_splits[i]
-
-        info_cluster[i] = {
-            "X_train": X_processed.loc[splits["train"]],
-            "y_train": y.loc[splits["train"]].to_numpy(),
-            "X_test":  X_processed.loc[splits["test"]],
-            "y_test":  y_test_full.loc[splits["test"]].to_numpy(),
-            "categorical_indicator": categorical_indicator,
-            "attribute_names": attribute_names,
-            "cluster_len": len(clusters[i][0]),
-            "dataset_name": f"Cluster_{i}",
-        }
-
-        if hpo_tuning:
-            info_cluster[i]["X_valid"] = X_processed.loc[splits["valid"]]
-            info_cluster[i]["y_valid"] = y.loc[splits["valid"]].to_numpy()
-
-        print(f"X size for cluster{i}:{info_cluster[i]['X_train']}")
-
-
-
-    info_cluster["whole"] = {
+    global_info["whole"] = {
         "X_train": X_train_full,
         "y_train": y_train_full.to_numpy(),
         "X_test":  X_test_full,
@@ -802,10 +726,10 @@ def get_dataset(
     }
 
     if hpo_tuning:
-        info_cluster["whole"]["X_valid"] = X_valid_full
-        info_cluster["whole"]["y_valid"] = y_valid_full.to_numpy()
+        global_info["whole"]["X_valid"] = X_valid_full
+        global_info["whole"]["y_valid"] = y_valid_full.to_numpy()
     
-    return info_cluster, attribute_names, categorical_indicator
+    return global_info, attribute_names, categorical_indicator
 
 
 class BasicBlock(nn.Module):
@@ -871,71 +795,323 @@ def make_residual_block(
     return BasicBlock(in_features, output_features, dropout_rate)
 
 
-
-from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import StandardScaler, OrdinalEncoder, OneHotEncoder
-from sklearn.preprocessing import LabelEncoder
-
-def build_preprocessor(
+def preprocess_dataset_after_split(
     X: pd.DataFrame,
-    y: pd.Series,
-    categorical_indicator: list,
+    y: pd.DataFrame,
+    clusters: Dict,
     encode_categorical: bool,
-    encoding_type: str,
-    seed: int,
-):
+    categorical_indicator: List,
+    attribute_names: List,
+    test_split_size: float = 0.2,
+    seed: int = 11,
+    encoding_type: str = "ordinal",
+    hpo_tuning: bool = False,
+) -> Dict:
+    ###################
+    #IML: This function is derivated from preprocess_dataset and modified to preprocess after clustering
+    ###################
+    """Preprocess the dataset.
+
+    Args:
+        X: The examples.
+        y: The labels.
+        encode_categorical: Whether to encode the categorical features.
+        categorical_indicator: An indicator for differentiating between categorical
+            and numerical features.
+        attribute_names: The names of the features.
+        test_split_size: The size of the test split.
+        seed: The random seed.
+        encoding_type: The encoding type for the categorical features. Whether it should be
+            'ordinal' or 'one-hot'.
+        hpo_tuning: Whether to create a validation set for hyperparameter optimization.
+
+    Returns:
+        info_dict: A dictionary with the preprocessed data and additional information
     """
-    Build a ColumnTransformer for mixed tabular data.
-    Does NOT fit or transform data.
-    """
+    dropped_column_names = []
+    dropped_column_indices = []
 
-    numerical_features = [
-        i for i, is_cat in enumerate(categorical_indicator) if not is_cat
-    ]
-    categorical_features = [
-        i for i, is_cat in enumerate(categorical_indicator) if is_cat
-    ]
+    for column_index, column_name in enumerate(X.keys()):
+        # if more than 90% of the values are missing, mark the column
+        if X[column_name].isnull().sum() > len(X[column_name]) * 0.9:
+            dropped_column_names.append(column_name)
+            dropped_column_indices.append(column_index)
+        # if the column has only one unique value, mark the column
+        if X[column_name].nunique() == 1:
+            dropped_column_names.append(column_name)
+            dropped_column_indices.append(column_index)
 
-    dataset_preprocessors = []
+    for column_index, column_name in enumerate(X.keys()):
+        if X[column_name].dtype == 'object' or X[column_name].dtype == 'category' or X[column_name].dtype == 'string':
+            # if more than 90% of the values are unique, mark the column
+            if X[column_name].nunique() / len(X[column_name]) > 0.9:
+                dropped_column_names.append(column_name)
+                dropped_column_indices.append(column_index)
 
-    if len(numerical_features) > 0:
-        dataset_preprocessors.append(
-            ("numerical", StandardScaler(), numerical_features)
+    # drop the marked columns
+    X = X.drop(dropped_column_names, axis=1)
+
+    # account for dropped columns and match the different indicators
+    attribute_names = [attribute_name for attribute_name in attribute_names if attribute_name not in dropped_column_names]
+    categorical_indicator = [categorical_indicator[i] for i in range(len(categorical_indicator)) if i not in dropped_column_indices]
+
+    column_category_values = []
+
+    # take pandas categories into account
+    for cat_indicator, column_name in zip(categorical_indicator, X.keys()):
+        # print("Column", column_name, "dtype:", X[column_name].dtype)
+        if X[column_name].dtype == "object":
+            X[column_name] = X[column_name].astype("category")
+
+        if cat_indicator:
+            if pd.api.types.is_categorical_dtype(X[column_name]):
+                column_categories = list(X[column_name].cat.categories)
+            else:
+                column_categories = None
+        else:
+            column_categories = None
+
+        column_category_values.append(column_categories)
+
+    info_cluster = {}
+    cluster_splits = {}
+    for i in range(1, len(clusters) + 1):
+        X_cluster, y_cluster = clusters[i]
+        idx = X_cluster.index
+        
+        cluster_len = len(X_cluster)
+
+        train_idx, temp_idx = train_test_split(
+            idx,
+            test_size=test_split_size,
+            random_state=seed,
+            stratify=y.loc[idx],
         )
+        
 
-    if len(categorical_features) > 0 and encode_categorical:
-        if y.nunique() > 2:
-            if encoding_type == "ordinal":
-                categorical_preprocessor = (
-                    "categorical",
-                    OrdinalEncoder(
-                        handle_unknown="use_encoded_value",
-                        unknown_value=-1,
-                    ),
-                    categorical_features,
-                )
+        if hpo_tuning:
+            valid_idx, test_idx = train_test_split(
+                temp_idx,
+                test_size=0.5,
+                random_state=seed,
+                stratify=y.loc[temp_idx],
+            )
+        else:
+            valid_idx = None
+            test_idx = temp_idx
+        
+
+        cluster_splits[i] = {
+            "train": train_idx,
+            "valid": valid_idx,
+            "test": test_idx,
+        }
+
+        X_train = X.loc[train_idx]
+        y_train = y.loc[train_idx]
+
+        X_test = X.loc[test_idx]
+        y_test = y.loc[test_idx]
+
+        if hpo_tuning:
+            X_valid = X.loc[valid_idx]
+            y_valid = y.loc[valid_idx]
+
+
+        # pandas series number of unique values
+        nr_classes = y_train.nunique()
+
+        # scikit learn label encoder
+        label_encoder = LabelEncoder()
+        label_encoder.fit(y_train)
+        y_train = label_encoder.transform(y_train)
+        y_test = label_encoder.transform(y_test)
+
+        if hpo_tuning:
+            y_valid = label_encoder.transform(y_valid)
+
+        numerical_features = [i for i in range(len(categorical_indicator)) if not categorical_indicator[i]]
+        categorical_features = [i for i in range(len(categorical_indicator)) if categorical_indicator[i]]
+
+        # save the column types
+        column_types = {}
+        for column_name in X_train.keys():
+            if X_train[column_name].dtype == 'object' or X_train[column_name].dtype == 'category' or X_train[column_name].dtype == 'string':
+                column_types[column_name] = 'category'
+            elif pd.api.types.is_numeric_dtype(X_train[column_name]):
+                column_types[column_name] = 'float64'
+            else:
+                raise ValueError("The column type must be one of 'object', 'category', 'string', 'int' or 'float'")
+
+        dataset_preprocessors = []
+        if len(numerical_features) > 0:
+            numerical_preprocessor = ('numerical', StandardScaler(), numerical_features)
+            dataset_preprocessors.append(numerical_preprocessor)
+
+        if len(categorical_features) > 0 and encode_categorical:
+            if nr_classes > 2:
+                if encoding_type == "ordinal":
+                    categorical_preprocessor = (
+                        'categorical_encoder',
+                        OrdinalEncoder(
+                            handle_unknown="use_encoded_value",
+                            unknown_value=-1,
+                            categories=column_category_values,
+                        ),
+                        categorical_features,
+                    )
+                else:
+                    categorical_preprocessor = (
+                        'categorical_encoder',
+                        OneHotEncoder(
+                            handle_unknown='ignore',
+                            sparse=False,
+                            categories=column_category_values,
+                            drop='if_binary',
+                        ),
+                        categorical_features,
+                    )
             else:
                 categorical_preprocessor = (
-                    "categorical",
-                    OneHotEncoder(
-                        handle_unknown="ignore",
-                        sparse=False,
-                        drop="if_binary",
-                    ),
+                    'categorical_encoder',
+                    TargetEncoder(random_state=seed),
                     categorical_features,
                 )
+            dataset_preprocessors.append(categorical_preprocessor)
+
+        column_transformer = ColumnTransformer(
+            dataset_preprocessors,
+            remainder='passthrough',
+        )
+        X_train = column_transformer.fit_transform(X_train, y_train)
+        X_test = column_transformer.transform(X_test)
+
+        if hpo_tuning:
+            X_valid = column_transformer.transform(X_valid)
+
+        X_train = pd.DataFrame(X_train)
+        X_test = pd.DataFrame(X_test)
+
+        if hpo_tuning:
+            X_valid = pd.DataFrame(X_valid)
+
+        if len(numerical_features) > 0:
+            new_categorical_indicator = [False] * len(numerical_features)
+            new_attribute_names = [attribute_names[i] for i in numerical_features]
         else:
-            categorical_preprocessor = (
-                "categorical",
-                TargetEncoder(random_state=seed),
-                categorical_features,
-            )
+            new_categorical_indicator = []
+            new_attribute_names = []
 
-        dataset_preprocessors.append(categorical_preprocessor)
+        if len(categorical_features) > 0:
+            if nr_classes == 2:
+                new_categorical_indicator.extend([True] * len(categorical_features))
+                new_attribute_names.extend([attribute_names[i] for i in categorical_features])
+            else:
+                for i in range(len(column_category_values)):
+                    nr_unique_categories = len(column_category_values[i])
+                    if nr_unique_categories > 2:
+                        new_categorical_indicator.extend([True] * len(column_category_values[i]))
+                        new_attribute_names.extend([attribute_names[categorical_features[i]] + '_' + str(category) for category in column_category_values[i]])
+                    else:
+                        new_categorical_indicator.extend([True])
+                        new_attribute_names.extend([attribute_names[categorical_features[i]]])
 
-    column_transformer = ColumnTransformer(
-        dataset_preprocessors,
-        remainder="passthrough",
-    )
+        if encode_categorical:
+            X_train = X_train.fillna(0)
+            X_test = X_test.fillna(0)
+        else:
+            for cat_indicator, column_name in zip(categorical_indicator, X_train.keys()):
+                if not cat_indicator:
+                    X_train[column_name] = X_train[column_name].fillna(0)
+                    X_test[column_name] = X_test[column_name].fillna(0)
+                    if hpo_tuning:
+                        X_valid[column_name] = X_valid[column_name].fillna(0)
+                else:
+                    X_train[column_name] = X_train[column_name].cat.add_categories('missing')
+                    X_train[column_name].cat.reorder_categories(np.roll(X_train[column_name].cat.categories, 1))
+                    X_train[column_name] = X_train[column_name].fillna('missing')
 
-    return column_transformer
+                    X_test[column_name] = X_test[column_name].cat.add_categories('missing')
+                    X_test[column_name].cat.reorder_categories(np.roll(X_test[column_name].cat.categories, 1))
+                    X_test[column_name] = X_test[column_name].fillna('missing')
+
+                    if hpo_tuning:
+                        X_valid[column_name] = X_valid[column_name].cat.add_categories('missing')
+                        X_valid[column_name].cat.reorder_categories(np.roll(X_valid[column_name].cat.categories, 1))
+                        X_valid[column_name] = X_valid[column_name].fillna('missing')
+
+
+        info_dict = {
+            'X_train': X_train,
+            'X_test': X_test,
+            'y_train': y_train,
+            'y_test': y_test,
+            'categorical_indicator': new_categorical_indicator,
+            'attribute_names': new_attribute_names,
+            'cluster_len': cluster_len,
+        }
+
+        if hpo_tuning:
+            info_dict['X_valid'] = X_valid
+            info_dict['y_valid'] = y_valid
+
+        info_dict["column_transformer"] = column_transformer
+        ct = info_dict["column_transformer"] = column_transformer
+
+        info_cluster[i] = info_dict
+
+    return info_cluster, ct, cluster_splits
+
+
+def add_cluster_whole(clusters):
+    ###################
+    #IML: This function created from scratch
+    ###################
+    '''Add a "whole" cluster that contains all data from the other clusters.
+    Args:
+        clusters: A dictionary with the clusters.
+    Returns:
+        clusters: The input dictionary with an additional "whole" cluster.
+    '''
+    whole = {
+        "X_train": [],
+        "y_train": [],
+        "X_test": [],
+        "y_test": [],
+        "X_valid": [],
+        "y_valid": [],
+    }
+
+    n=0
+    for cluster_name, cluster_data in clusters.items():
+        if cluster_name == "Cluster_whole":
+            continue
+
+        for split in ["train", "test", "valid"]:
+            X_key = f"X_{split}"
+            y_key = f"y_{split}"
+
+            n += len(cluster_data[X_key])
+            
+
+            if X_key in cluster_data:
+                X = cluster_data[X_key]
+                y = cluster_data[y_key]
+
+                whole[X_key].append(X)
+
+                if isinstance(y, np.ndarray):
+                    y = pd.Series(y, index=X.index)
+
+                whole[y_key].append(y)
+        
+
+
+    clusters["Cluster_whole"] = {
+        k: pd.concat(v, axis=0).sort_index()
+        for k, v in whole.items()
+        if len(v) > 0
+    }
+    clusters["Cluster_whole"]["cluster_len"] = n
+
+    return clusters
