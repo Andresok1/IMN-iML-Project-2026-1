@@ -19,7 +19,32 @@ from mpl_toolkits.mplot3d import Axes3D
 
 
 
-def gower_hierarchical_clustering(X, y, categorical_cols, numerical_cols, plot_dendrogram=False, initial_cluster_len=None, clusters=None, one_more_division =True, offset=0):
+def gower_hierarchical_clustering(
+        X: pd.DataFrame, 
+        y: pd.Series, 
+        categorical_cols: list, 
+        numerical_cols: list, 
+        plot_dendrogram: bool=False , 
+        initial_cluster_len: int =None, 
+        clusters: dict=None, 
+        offset: int=0
+    ):
+    ###################
+    #IML: This function created from scratch
+    ###################
+    '''Perform hierarchical clustering using Gower distance on mixed data types.
+    Args:
+        X: DataFrame containing the features.
+        y: Series containing the target variable.
+        categorical_cols: List of categorical column names.
+        numerical_cols: List of numerical column names.
+        plot_dendrogram: Whether to plot the dendrogram.
+        initial_cluster_len: The length of the initial cluster before any splits.
+        clusters: A dictionary to store the resulting clusters.
+        offset: An integer offset for cluster numbering.
+    Returns:
+        A dictionary with cluster labels as keys and tuples of (X_cluster, y_cluster) as values.
+    '''
 
     if initial_cluster_len is None:
         initial_cluster_len = len(X)
@@ -156,16 +181,21 @@ def gower_hierarchical_clustering(X, y, categorical_cols, numerical_cols, plot_d
     else:
         clusters[1] = (X, y)
 
-    return clusters, D
+    return clusters
 
 
 
-def silhouette_score_criterion(gower_matrix,show_results=False):
-    '''
-    silhouette_score_criterion uses silhouette score to determine the optimal number of clusters (k) for hierarchical clustering.
-    
-    param:
+def silhouette_score_criterion(
+        gower_matrix: np.ndarray,
+        show_results: bool=False
+    ):
+    ###################
+    #IML: This function created from scratch
+    ###################
+    '''silhouette_score_criterion uses silhouette score to determine the optimal number of clusters (k) for hierarchical clustering.
+    Args:
         gower_matrix: Gower distance matrix
+        show_results: Whether to print the silhouette scores for each k.
     return: 
         print k as number of clusters and silhouette score for each k
     '''
@@ -193,7 +223,25 @@ def silhouette_score_criterion(gower_matrix,show_results=False):
 
 
 
-def pca_mixed_data_visualization(clusters, categorical_cols, numerical_cols, visualization=False, dim=3):
+def pca_mixed_data_visualization(
+        clusters: dict, 
+        categorical_cols: list, 
+        numerical_cols: list, 
+        visualization: bool=False, 
+        dim: int=3):
+    ###################
+    #IML: This function created from scratch
+    ###################
+    '''Perform PCA visualization for mixed data types in 2D or 3D.
+    Args:
+        clusters: A dictionary with cluster labels as keys and tuples of (X_cluster, y_cluster) as values.
+        categorical_cols: List of categorical column names.
+        numerical_cols: List of numerical column names.
+        visualization: Whether to create PCA visualizations.
+        dim: Dimension of the PCA plot (2 or 3).
+    Returns:
+        None
+    '''
 
     preprocess = ColumnTransformer(
         [
@@ -339,9 +387,20 @@ def pca_mixed_data_visualization(clusters, categorical_cols, numerical_cols, vis
     plt.show()
 
 
-
-
-def update_summary(path, new_entry):
+def update_summary(
+        path: str, 
+        new_entry: dict
+    ):
+    ###################
+    #IML: This function created from scratch
+    ###################
+    '''Update the summary JSON file with a new entry.
+    Args:
+        path: The path to the summary JSON file.
+        new_entry: The new entry to be added to the summary.
+    Returns:
+        None
+    '''
     if os.path.exists(path):
         with open(path, 'r') as f:
             summary = json.load(f)
@@ -354,7 +413,20 @@ def update_summary(path, new_entry):
         json.dump(summary, f, indent=4)
 
 
-def global_json_calculation(path, feature_list):
+def global_json_calculation(
+        path: str, 
+        feature_list: list
+    ):
+    ###################
+    #IML: This function created from scratch
+    ###################
+    '''Calculate global metrics and feature ranking from cluster results in a JSON file.
+    Args:
+        path: The path to the summary JSON file.
+        feature_list: A list of feature names.
+    Returns:
+        None
+    '''
 
     with open(path, "r") as f:
         results = json.load(f)
@@ -433,8 +505,8 @@ def global_json_calculation(path, feature_list):
         "test_accuracy": weighted_test_accuracy,
         "test_balance_accuracy": weighted_test_bal_acc,
         "test_f1": weighted_test_f1,
-        "test_precision": weighted_test_precision,
         "test_recall": weighted_test_recall,
+        "test_precision": weighted_test_precision,
         "train_time": weighted_train_time,
         "inference_time": weighted_inference_time,
         "total_dataset_size": total_samples,
@@ -450,14 +522,37 @@ def global_json_calculation(path, feature_list):
 
 
 
-def show_clusters(clusters):
+def show_clusters(
+        clusters: dict
+    ):
+    ###################
+    #IML: This function created from scratch
+    ###################
+    '''Display the size of each cluster.
+    Args:
+        clusters: A dictionary with the clusters.
+    Returns:
+        None
+    '''
     for i, (X_data, y_data) in clusters.items():
         cluster_size = len(X_data)  
         print(f"Cluster size {i}: {cluster_size}")
 
 
 
-def generate_cluster_feature_plots(summary_path):
+def generate_cluster_feature_plots(
+        summary_path: str
+    ):
+    ###################
+    #IML: This function created from scratch
+    ###################
+    '''Generate and save bar plots of top features for each cluster and global feature ranking.
+    Args:
+        summary_path: The path to the summary JSON file.
+    Returns:
+        None
+    '''
+
     parent_dir = os.path.dirname(summary_path)
 
     with open(summary_path, "r") as f:
@@ -507,8 +602,8 @@ def generate_cluster_feature_plots(summary_path):
     # plot global
     ranking = None
     for item in summary_data:
-        if "cluster_global_ranking" in item:
-            ranking = item["cluster_global_ranking"]
+        if "cluster_mean_ranking" in item:
+            ranking = item["cluster_mean_ranking"]
             break
 
     if ranking is None:
@@ -524,7 +619,7 @@ def generate_cluster_feature_plots(summary_path):
     summary_dir = os.path.join(parent_dir)
     os.makedirs(summary_dir, exist_ok=True)
 
-    save_path = os.path.join(summary_dir, "cluster_global_ranking_mean.png")
+    save_path = os.path.join(summary_dir, "cluster_mean_ranking_mean.png")
 
     plot_barh(
         features,
@@ -534,13 +629,26 @@ def generate_cluster_feature_plots(summary_path):
     )
 
 
-def save_test_data(info_cluster, output_directory,attribute_names):
-
+def save_test_train_data(
+        info_cluster: dict, 
+        output_directory:  str,
+        attribute_names: list
+    ):
+    ###################
+    #IML: This function created from scratch
+    ###################
+    '''Save test and train data for each cluster as CSV files.
+    Args:
+        info_cluster: A dictionary with cluster information including test and train data.
+        output_directory: The directory where the CSV files will be saved.
+        attribute_names: The names of the features.
+    Returns:
+        None
+    '''
 
     for cluster_id, info in info_cluster.items(): 
            
         X_test_cluster = info['X_test']
-        
         y_test_cluster = info['y_test']
 
         X_test_cluster.columns = attribute_names
@@ -552,6 +660,17 @@ def save_test_data(info_cluster, output_directory,attribute_names):
 
         test_data = pd.concat([X_test_cluster, y_test_cluster], axis=1)
         
+        X_train_cluster = info['X_train']
+        y_train_cluster = info['y_train']
+
+        X_train_cluster.columns = attribute_names
+
+        y_train_cluster = pd.Series(y_train_cluster, name="churn")
+
+        X_train_cluster = X_train_cluster.reset_index(drop=True)
+        y_train_cluster = y_train_cluster.reset_index(drop=True)
+
+        train_data = pd.concat([X_train_cluster, y_train_cluster], axis=1)
 
         folder_name = f"cluster_{cluster_id}"
         cluster_folder = os.path.join(output_directory, folder_name)
@@ -562,31 +681,38 @@ def save_test_data(info_cluster, output_directory,attribute_names):
             f"test_data_cluster_{cluster_id}.csv")
 
         test_data.to_csv(csv_path, index=False)
+        
+        csv_path = os.path.join(
+            cluster_folder,
+            f"train_data_cluster_{cluster_id}.csv")
+
+        train_data.to_csv(csv_path, index=False)
 
 def split_dataset_by_clustering(
-    X: pd.DataFrame,
-    y: pd.Series,
-    n_clusters: int = 4,
-    random_state: int = 11,
-):
+        X: pd.DataFrame,
+        y: pd.Series,
+        n_clusters: int = 4,
+        random_state: int = 11,
+    ):
+    ###################
+    #IML: This function created from scratch
+    ###################
     """
     Split dataset into K clusters using KMeans (feature-based, unsupervised).
 
     Returns:
-        Dict[int, Tuple[X_cluster, y_cluster]]
+        clustered_data: A dictionary where keys are cluster labels and values are tuples of (X_cluster, y_cluster).
+        cluster_labels: An array of cluster labels for each sample in the original dataset.     
     """
 
-    # Nur numerische Features fürs Clustering
     X_num = X.select_dtypes(include=[np.number])
 
     if X_num.shape[1] == 0:
         raise ValueError("Clustering requires at least one numerical feature.")
 
-    # Skalieren (sehr wichtig)
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X_num)
 
-    # KMeans
     kmeans = KMeans(
         n_clusters=n_clusters,
         random_state=random_state,
@@ -594,16 +720,10 @@ def split_dataset_by_clustering(
     )
     cluster_labels = kmeans.fit_predict(X_scaled)
 
-    # Aufteilen
     clustered_data = {}
     for cluster_id in range(n_clusters):
         X_sub = X[cluster_labels == cluster_id]
         y_sub = y[cluster_labels == cluster_id]
-        # mask = cluster_labels == cluster_id
-        # clustered_data[cluster_id] = (
-        #     X.loc[mask].reset_index(drop=True),
-        #     y.loc[mask].reset_index(drop=True),
-        # )
 
         clustered_data[cluster_id] = (X_sub,y_sub)
 
