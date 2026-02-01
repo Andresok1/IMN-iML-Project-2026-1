@@ -13,20 +13,26 @@ from sklearn.metrics import (
     recall_score,
     f1_score,
 )
-
 from models.model import Classifier
 
 
 def retest(args):
+    ###################
+    #IML: This function created from scratch
+    ###################
+    '''Perform retesting of a saved model on all clusters and save the results.
+    Args:
+        args: The arguments for the experiment.
+    Returns:
+        None
+    '''
 
-    # Load model
     model_path = os.path.join(args.model_dir, "model.pt")
     if not os.path.exists(model_path):
         raise FileNotFoundError(model_path)   
 
     model_dummy = args.model_dir
     tarjet_value = args.target_column
-   # Dummy args für Classifier
 
     args = argparse.Namespace(
         mode= "classification",
@@ -56,14 +62,12 @@ def retest(args):
     X_test = df.drop(columns=["churn"]).to_numpy().astype(np.float32)
 
 
-    # Für predict reicht das als Platzhalter
     categorical_indicator = [False] * X_test.shape[1]
     attribute_names = [f"f{i}" for i in range(X_test.shape[1])]
 
-    # Netzwerk muss gleich aufgebaut werden wie beim Training
     network_configuration = {
         "nr_features": int(X_test.shape[1]),
-        "nr_classes": 1,  # bei Telco => 1
+        "nr_classes": 1,
         "nr_blocks": args.nr_blocks,
         "hidden_size": args.hidden_size,
         "dropout_rate": args.dropout_rate,
@@ -117,7 +121,6 @@ def retest(args):
         probs = clf.predict(X_test).detach().cpu().numpy().reshape(-1)
         test_predicitions = (probs > 0.5).astype(int)
 
-        # Metriken
         test_auroc = roc_auc_score(y_test.tolist(), probs.tolist(), multi_class='ovo')
         test_accuracy = accuracy_score(y_test, test_predicitions)
         test_bal_acc = balanced_accuracy_score(y_test, test_predicitions)
@@ -137,7 +140,12 @@ def retest(args):
 
         Summary_retest.append(output_info_retest)
         
-        pd.DataFrame({"y_true": y_test, "y_prob": probs, "y_pred": test_predicitions}).to_csv(
+        positive_labels = 0
+        for i in y_test:            
+            if i == 1:
+                positive_labels += 1
+
+        pd.DataFrame({"y_true": y_test, "y_prob": probs, "y_pred": test_predicitions,"positive_labels": positive_labels}).to_csv(
         os.path.join(cluster_path, f"predictions_{cluster_id}.csv"),
         index=False,
         )
