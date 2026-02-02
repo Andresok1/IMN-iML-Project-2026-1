@@ -1,8 +1,6 @@
-#(iML-Project )Interpretable Mesomorphic Networks for Tabular Data
+#(iML-Project )Clustering Analysis of Datasets Using Mesomorphic Networks
 
-Mesomorphic networks use Deep Neural Networks to construct a local linear intrinsic model for every instance. This approach allows for a highly interpretable predictions while retaining the strong predictive performance of neural networks. Interpretability is achieved both at the model level and the instance level. In this case, interpretability is not applied as a post-hoc method, but rather integrated directly into the prediction process. This combination allows to use the great performance of Neural Networks and at the same time provides interpretable results of linear models. The advantages of both approaches are preserved.
-
-Through extensive experiments was demostrated that...
+Interpretable Machine Learning methods are often evaluated on global datasets, assuming homogeneous data distributions and uniform model behaviour. However, real world tabular datasets often exhibit structural heterogeneity, where different subpopulations follow distinct predictive patterns. In this project, we study how model performance and interpretability change when the data is partitioned into clusters prior to training. We propose a pipeline that performs clustering in the raw feature space using the Gower distance guided by the silhouette criterion and clustering k means. Model training and interpretation are carried out using the Interpretable Mesomorphic Network architecture previously proposed in the literature, which provides instance level feature importance scores to compare explanatory patterns across clusters. 
 
 This work is based on the original repository developed by [Arlind Kadra, Sebastian Pineda Arango, and Josif Grabocka]. The codebase has been adapted and extended as part of an academic project focused on interpretable machine learning.
 
@@ -18,7 +16,6 @@ pip install -r requirements.txt
 ## Running the code
 
 The entry script to run IMN and TabResNet is `hpo_main_experiment.py`. 
-The entry script to run the baseline methods (CatBoost, Random Forest, Logistic Regression, Decision Tree and TabNet) is `hpo_baseline_experiment.py`.
 
 The main arguments for `hpo_main_experiment.py` are:
 
@@ -39,7 +36,6 @@ The main arguments for `hpo_main_experiment.py` are:
 - `--create_clusters`: Whether to create clusters or just consider the whole dataset.
 - `--visualization`: Whether to generate a visualization of your dataset/cluster set.
 - `--cluster_type`: Whether to cluster via Gower or Kmeans. 
-
 
 
 **A minimal example of running IMN**:
@@ -65,6 +61,7 @@ The plots expect the following result folder structure:
 │   │   │   ├── cluster_NAME
 │   │   │   │   ├── output_info.json
 │   │   │   │   ├── top_features.png
+│   │   │   │   ├── shap_summary.png
 │   │   │   ├── cluster_global_ranking_mean.png
 
 ```
