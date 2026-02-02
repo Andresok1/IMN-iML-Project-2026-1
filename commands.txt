@@ -1,8 +1,0 @@
-python hpo_main_experiment.py --hpo_tuning --n_trials 1 --seed 0 --disable_wandb --interpretable --dataset_id 0 --create_clusters
-
-python hpo_main_experiment.py --hpo_tuning --n_trials 1 --seed 0 --disable_wandb --interpretable --dataset_id 0
-
-python eval_saved_model.py --model_dir C:\Users\Andres\Documents\Repos\iML\Project\IMN\inn\dataset_0_2026-02-01_16-37-33_andres_mit_shap\seed_1\cluster_whole --target_column churn
-
-
-
