@@ -126,7 +126,6 @@ def gower_hierarchical_clustering(
             c_small = centroids[i]  
 
             if normal_clusters:
-                print("estoy intentando juntar el puto:",small_clusters)
                 # try:
                 closest_normal = min(
                     normal_clusters,
@@ -167,7 +166,7 @@ def gower_hierarchical_clustering(
 
             next_offset = len(X_big)
 
-            sub_clusters, _ = gower_hierarchical_clustering(
+            sub_clusters = gower_hierarchical_clustering(
                 X_big,
                 y_big,
                 categorical_cols,
