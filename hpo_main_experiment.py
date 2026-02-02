@@ -165,7 +165,7 @@ def hpo_main(args):
             if args.interpretable:
                 study.enqueue_trial(
                     {
-                        'nr_epochs':10,
+                        'nr_epochs':150,
                         'batch_size': 64,
                         'learning_rate': 0.01,
                         'weight_decay': 0.01,
@@ -176,7 +176,7 @@ def hpo_main(args):
             else:
                 study.enqueue_trial(
                     {
-                        'nr_epochs': 10,
+                        'nr_epochs': 150,
                         'batch_size': 64,
                         'learning_rate': 0.01,
                         'weight_decay': 0.01,
