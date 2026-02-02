@@ -1,0 +1,47 @@
+[
+  {
+    "cluster_id": "cluster_1",
+    "test_auroc": 0.7628384687208216,
+    "test_accuracy": 0.5919117647058824,
+    "test_balanced_accuracy": 0.630718954248366,
+    "test_f1": 0.6686567164179105,
+    "test_recall": 0.9411764705882353,
+    "test_precision": 0.5185185185185185
+  },
+  {
+    "cluster_id": "cluster_2",
+    "test_auroc": 0.7580754270251987,
+    "test_accuracy": 0.8780487804878049,
+    "test_balanced_accuracy": 0.4931506849315068,
+    "test_f1": 0.0,
+    "test_recall": 0.0,
+    "test_precision": 0.0
+  },
+  {
+    "cluster_id": "cluster_3",
+    "test_auroc": 0.729038112522686,
+    "test_accuracy": 0.817351598173516,
+    "test_balanced_accuracy": 0.5441016333938293,
+    "test_f1": 0.2,
+    "test_recall": 0.1724137931034483,
+    "test_precision": 0.23809523809523808
+  },
+  {
+    "cluster_id": "cluster_4",
+    "test_auroc": 0.8024096385542169,
+    "test_accuracy": 0.6573426573426573,
+    "test_balanced_accuracy": 0.7002008032128514,
+    "test_f1": 0.703030303030303,
+    "test_recall": 0.9666666666666667,
+    "test_precision": 0.5523809523809524
+  },
+  {
+    "cluster_id": "cluster_whole",
+    "test_auroc": 0.8379910935180603,
+    "test_accuracy": 0.7443181818181818,
+    "test_balanced_accuracy": 0.7714827643080984,
+    "test_f1": 0.6341463414634146,
+    "test_recall": 0.8297872340425532,
+    "test_precision": 0.5131578947368421
+  }
+]

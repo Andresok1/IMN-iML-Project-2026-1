@@ -1,0 +1,2 @@
+number,value,params_batch_size,params_dropout_rate,params_learning_rate,params_nr_epochs,params_weight_decay,params_weight_norm,state
+0,0.8324018538713195,64,0.25,0.01,150,0.01,0.1,COMPLETE

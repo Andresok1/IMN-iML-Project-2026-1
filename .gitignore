@@ -129,13 +129,13 @@ dmypy.json
 .pyre/
 
 #results
-summary.json
-model.pt
-trials.csv
-output_info.json
-top_features.png
-cluster_global_ranking.png
-cluster_global_ranking_mean.png
+# summary.json
+# model.pt
+# trials.csv
+# output_info.json
+# top_features.png
+# cluster_global_ranking.png
+# cluster_global_ranking_mean.png
 commands.txt
 
 
