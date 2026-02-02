@@ -1,4 +1,4 @@
-#(iML-Project )Clustering Analysis of Datasets Using Mesomorphic Networks
+##(iML-Project )Clustering Analysis of Datasets Using Mesomorphic Networks
 
 Interpretable Machine Learning methods are often evaluated on global datasets, assuming homogeneous data distributions and uniform model behaviour. However, real world tabular datasets often exhibit structural heterogeneity, where different subpopulations follow distinct predictive patterns. In this project, we study how model performance and interpretability change when the data is partitioned into clusters prior to training. We propose a pipeline that performs clustering in the raw feature space using the Gower distance guided by the silhouette criterion and clustering k means. Model training and interpretation are carried out using the Interpretable Mesomorphic Network architecture previously proposed in the literature, which provides instance level feature importance scores to compare explanatory patterns across clusters. 
 
