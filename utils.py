@@ -653,10 +653,20 @@ def get_dataset(
         dataset_name = csv_path.stem
 
         if create_clusters:
+            if cluster_type ==1:
             # Gower
 
-            clusters = gower_hierarchical_clustering(X, y, categorical_cols, numerical_cols, plot_dendrogram=False)
-            
+                clusters = gower_hierarchical_clustering(X, y, categorical_cols, numerical_cols, plot_dendrogram=False)
+            elif cluster_type ==2:
+                print("clustering by kmeans!")
+            #Kmeans
+                clusters, cluster_labels = split_dataset_by_clustering(
+                        X,
+                        y,
+                        n_clusters=4,
+                        random_state=seed,
+                    )
+
         else:
             clusters= {1: (X, y)}
 
