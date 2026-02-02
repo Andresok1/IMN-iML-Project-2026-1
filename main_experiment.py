@@ -14,6 +14,9 @@ import wandb
 from models.model import Classifier
 from sklearn.metrics import balanced_accuracy_score 
 from sklearn.metrics import f1_score
+import shap
+import pandas as pd
+import matplotlib.pyplot as plt
 
 
 def main(
@@ -30,7 +33,7 @@ def main(
     cluster_len: float,
 ) -> Dict:
     ###################
-    #IML: This function was modified to include more parformance metrics
+    #IML: This function was modified to include more parformance metrics and SHAP explainability included
     ###################
     """Main entry point for the experiment.
 
@@ -182,6 +185,65 @@ def main(
 
     inference_time = time.time() - start_time - train_time
 
+    # SHAP
+    def f(X):
+        return model.predict(X)
+
+    background = shap.sample(X_train, 25, args.seed)
+    rng = np.random.default_rng(args.seed)
+    if len(X_test) < 100:
+        idx = rng.choice(len(X_test), size=100, replace=True)
+    else: 
+        idx = rng.choice(len(X_test), size=100, replace=False)
+    X_shap = X_test[idx]
+
+    explainer = shap.Explainer(f, background)
+    shap_exp = explainer(X_shap)
+
+    plt.figure()
+
+    shap.dependence_plot("gender", shap_exp.values, X_shap, feature_names=attribute_names, interaction_index="auto", show=False)
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_directory, "shap_dependence_gender.png"), dpi=200)
+    plt.close()
+
+
+
+    df_sv = pd.DataFrame(shap_exp.values, columns=attribute_names)
+    df_sv.insert(0, "row_id", idx)  # original row indices aus X_test
+    df_sv.to_csv(
+        os.path.join(output_directory, "shap_values.csv"),
+        index=False,
+    )
+
+    mean_abs = np.abs(shap_exp.values).mean(axis=0)
+    df_imp = pd.DataFrame({"feature": attribute_names, "mean_abs_shap": mean_abs}) \
+        .sort_values("mean_abs_shap", ascending=False)
+    df_imp.to_csv(
+        os.path.join(output_directory, "shap_importance.csv"),
+        index=False,
+    )
+
+    shap.summary_plot(shap_exp.values, X_shap, feature_names=attribute_names, show=False)
+    plt.tight_layout()
+    plt.savefig(
+        os.path.join(output_directory, "shap_summary.png"),
+        dpi=200,
+    )
+    plt.close()
+
+    # Bar Plot (global)
+    plt.figure()
+    plt.barh(df_imp["feature"].head(20)[::-1], df_imp["mean_abs_shap"].head(20)[::-1])
+    plt.tight_layout()
+    plt.savefig(
+        os.path.join(output_directory, "shap_bar_top20.png"),
+        dpi=200,
+    )
+    plt.close()
+    # End SHAP
+
     test_predictions = test_predictions.cpu().numpy()               
     train_predictions = train_predictions.cpu().numpy()
 
@@ -277,3 +339,5 @@ def main(
         wandb.finish()
 
     return output_info
+
+
